@@ -13,15 +13,19 @@ try:
 except ImportError:  # Windows has no resource module
     resource = None
 
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Input, OptionList, RichLog, Static
 from textual.widgets.option_list import Option
+from rich.markup import escape as escape_markup
 
 WHITE = "#f2f2f2"
 MUTED = "#8a8a8a"
 BORDER = "#2c2c2c"
+RESULT = "#7ee787"
+TOOL = "#f2c94c"
 
 TOOLS_DIR = Path(__file__).resolve().parent / "tools"
 
@@ -191,6 +195,17 @@ class Pykaxe(App):
     def on_mount(self) -> None:
         self.tools = discover_tools()
         self.refresh_content()
+        self._focus_input()
+
+    def _focus_input(self) -> None:
+        self.query_one(Input).focus()
+
+    def on_click(self, event: events.Click) -> None:
+        # The Input is the only thing worth typing into — whatever else got
+        # clicked (the log, a suggestion, the interrupt button) has already
+        # handled the click itself by the time this fires, so just make
+        # sure a cursor is always waiting in the Input afterward.
+        self._focus_input()
 
     def write_line_to(self, shell: Shell, text: str) -> None:
         shell.lines.append(text)
@@ -221,37 +236,47 @@ class Pykaxe(App):
             return
         self.query_one(Input).value = ""
         self.query_one("#suggestions", OptionList).display = False
-        self.write_line(f"/{event.option.id}")
         await self.load_tool(event.option.id)
+        self._focus_input()
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value
         event.input.value = ""
         self.query_one("#suggestions", OptionList).display = False
-        self.write_line(text)
 
         shell = self.shells[self.current]
         if text.startswith("/"):
-            matches = fuzzy_filter(text[1:].strip(), list(self.tools.keys()))
+            query = text[1:].strip()
+            matches = fuzzy_filter(query, list(self.tools.keys()))
             if matches:
                 await self.load_tool(matches[0])
             else:
-                self.write_line(f"[{MUTED}]no such tool: {text[1:].strip()}[/]")
+                self.write_line(text)
+                self.write_line(f"[{MUTED}]no such tool: {query}[/]")
+                self.write_line("")
         elif shell.tool is not None and shell.arg_index < len(shell.pending_args):
+            self.write_line(text)
+            self.write_line("")
             await self.collect_argument(text)
+        else:
+            self.write_line(text)
+            self.write_line("")
 
     async def load_tool(self, name: str) -> None:
         shell = self.shells[self.current]
         if shell.process is not None:
             self.write_line(f"[{MUTED}]a tool is running in this shell — press esc to stop it first[/]")
+            self.write_line("")
             return
 
         module = self.tools.get(name)
         if module is None:
             self.write_line(f"[{MUTED}]no such tool: {name}[/]")
+            self.write_line("")
             return
         if not hasattr(module, "build_parser"):
             self.write_line(f"[{MUTED}]{name} has no build_parser()[/]")
+            self.write_line("")
             return
 
         parser = module.build_parser()
@@ -267,13 +292,24 @@ class Pykaxe(App):
         shell.arg_index = 0
         shell.values = {}
 
+        desc = getattr(module, "TOOL_DESCRIPTION", "")
+        banner = f"[{TOOL}]{escape_markup(name)}[/]"
+        if desc:
+            banner += f" [{MUTED}]— {escape_markup(desc)}[/]"
+        self.write_line(banner)
+        self.write_line("")
+
         self.update_badge()
-        self.prompt_next_arg()
+        if shell.pending_args:
+            self.prompt_next_arg()
+        else:
+            await self.run_tool(shell)
 
     def prompt_next_arg(self) -> None:
         shell = self.shells[self.current]
         action = shell.pending_args[shell.arg_index]
         self.write_line(f"[{MUTED}]enter {action.dest}:[/]")
+        self.write_line("")
 
     async def collect_argument(self, value: str) -> None:
         shell = self.shells[self.current]
@@ -289,6 +325,7 @@ class Pykaxe(App):
     async def run_tool(self, shell: Shell) -> None:
         if shell.process is not None:
             self.write_line(f"[{MUTED}]a tool is already running in this shell — press esc to stop it first[/]")
+            self.write_line("")
             return
 
         args = []
@@ -315,6 +352,7 @@ class Pykaxe(App):
             )
         except Exception as exc:
             self.write_line(f"[{MUTED}]failed to start {shell.tool}: {exc}[/]")
+            self.write_line("")
             return
 
         shell.process = process
@@ -326,7 +364,6 @@ class Pykaxe(App):
         buffering it all in memory until exit — that buffering is what let
         an infinite-loop tool grow without bound and look frozen while it
         produced no visible output at all."""
-        self.write_line_to(shell, "")
         watchdog = asyncio.create_task(self._watchdog(shell, process))
         total_bytes = 0
         killed_reason: str | None = None
@@ -341,7 +378,11 @@ class Pykaxe(App):
                 if not line:
                     break
                 total_bytes += len(line)
-                self.write_line_to(shell, line.decode(errors="replace").rstrip("\n"))
+                text = line.decode(errors="replace").rstrip("\n")
+                if text:
+                    self.write_line_to(shell, f"[{RESULT}]{escape_markup(text)}[/]")
+                else:
+                    self.write_line_to(shell, "")
                 if total_bytes > MAX_OUTPUT_BYTES:
                     killed_reason = "exceeded output limit"
                     self._kill_process(process)
@@ -392,16 +433,19 @@ class Pykaxe(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "interrupt":
             self.action_interrupt()
+        self._focus_input()
 
     def action_new_shell(self) -> None:
         self.shells.append(Shell())
         self.current = len(self.shells) - 1
         self.refresh_content()
+        self._focus_input()
 
     def action_cycle_shell(self) -> None:
         if len(self.shells) > 1:
             self.current = (self.current + 1) % len(self.shells)
             self.refresh_content()
+        self._focus_input()
 
     def action_interrupt(self) -> None:
         suggestions = self.query_one("#suggestions", OptionList)
@@ -416,6 +460,7 @@ class Pykaxe(App):
     def action_scan_tools(self) -> None:
         self.tools = discover_tools()
         self.write_line(f"[{MUTED}]scanned {len(self.tools)} tool(s)[/]")
+        self.write_line("")
 
     def update_badge(self) -> None:
         shell = self.shells[self.current]
@@ -432,7 +477,7 @@ class Pykaxe(App):
         for line in self.shells[self.current].lines:
             log.write(line)
         self.query_one("#shelllabel", Static).update(
-            f"shell {self.current + 1}/{len(self.shells)}"
+            f"[{TOOL}]shell {self.current + 1}/{len(self.shells)}[/]"
         )
         self.update_badge()
 
