@@ -22,7 +22,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           tag_version="${GITHUB_REF_NAME#v}"
-          pkg_version="$(python -c 'import pykaxe; print(pykaxe.__version__)')"
+          pkg_version="$(python -c 'import re, pathlib; print(re.search(r"__version__ = \"(.+)\"", pathlib.Path("src/pykaxe/__init__.py").read_text())[1])')"
           if [ "$tag_version" != "$pkg_version" ]; then
             echo "tag v$tag_version does not match package version $pkg_version" >&2
             exit 1
