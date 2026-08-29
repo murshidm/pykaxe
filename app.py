@@ -7,7 +7,8 @@ from types import ModuleType
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Input, RichLog, Static
+from textual.widgets import Button, Input, OptionList, RichLog, Static
+from textual.widgets.option_list import Option
 
 WHITE = "#f2f2f2"
 MUTED = "#8a8a8a"
@@ -18,8 +19,32 @@ TOOLS_DIR = Path(__file__).resolve().parent / "tools"
 SHORTCUTS = (
     f"[{WHITE}]ctrl+q[/] [{MUTED}]quit[/]   "
     f"[{WHITE}]ctrl+n[/] [{MUTED}]new shell[/]   "
+    f"[{WHITE}]ctrl+s[/] [{MUTED}]scan tools[/]   "
     f"[{WHITE}]tab[/] [{MUTED}]cycle shell[/]"
 )
+
+
+def fuzzy_filter(query: str, names: list[str]) -> list[str]:
+    query = query.lower()
+    if not query:
+        return sorted(names)
+    scored = []
+    for name in names:
+        low = name.lower()
+        pos = -1
+        first = None
+        ok = True
+        for ch in query:
+            pos = low.find(ch, pos + 1)
+            if pos == -1:
+                ok = False
+                break
+            if first is None:
+                first = pos
+        if ok:
+            scored.append((first, len(name), name))
+    scored.sort()
+    return [name for _, _, name in scored]
 
 
 def discover_tools() -> dict[str, ModuleType]:
@@ -92,12 +117,19 @@ class Pykaxe(App):
         width: auto;
         content-align: right middle;
     }}
+    #suggestions {{
+        display: none;
+        height: auto;
+        max-height: 6;
+        border: round {BORDER};
+    }}
     """
 
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit"),
         Binding("tab", "cycle_shell", "Cycle shell", priority=True),
         Binding("ctrl+n", "new_shell", "New shell"),
+        Binding("ctrl+s", "scan_tools", "Scan tools"),
         Binding("escape", "interrupt", "Interrupt"),
     ]
 
@@ -106,34 +138,66 @@ class Pykaxe(App):
         self.shells: list[Shell] = [Shell()]
         self.current = 0
         self.process: asyncio.subprocess.Process | None = None
+        self.tools: dict[str, ModuleType] = {}
 
     def compose(self) -> ComposeResult:
         yield Static("", id="badge")
         yield RichLog(markup=True, wrap=True)
         with Vertical(id="bottom"):
+            yield OptionList(id="suggestions")
             yield Input(placeholder="Type your message here...")
             yield StatusBar()
 
     def on_mount(self) -> None:
+        self.tools = discover_tools()
         self.refresh_content()
 
     def write_line(self, text: str) -> None:
         self.shells[self.current].lines.append(text)
         self.query_one(RichLog).write(text)
 
+    def on_input_changed(self, event: Input.Changed) -> None:
+        suggestions = self.query_one("#suggestions", OptionList)
+        if not event.value.startswith("/"):
+            suggestions.display = False
+            return
+
+        matches = fuzzy_filter(event.value[1:], list(self.tools.keys()))
+        suggestions.clear_options()
+        if not matches:
+            suggestions.display = False
+            return
+        for name in matches[:8]:
+            desc = getattr(self.tools[name], "TOOL_DESCRIPTION", "")
+            suggestions.add_option(Option(f"{name} — {desc}" if desc else name, id=name))
+        suggestions.display = True
+
+    async def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != "suggestions" or event.option.id is None:
+            return
+        self.query_one(Input).value = ""
+        self.query_one("#suggestions", OptionList).display = False
+        self.write_line(f"/{event.option.id}")
+        await self.load_tool(event.option.id)
+
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value
         event.input.value = ""
+        self.query_one("#suggestions", OptionList).display = False
         self.write_line(text)
 
         shell = self.shells[self.current]
         if text.startswith("/"):
-            await self.load_tool(text[1:].strip())
+            matches = fuzzy_filter(text[1:].strip(), list(self.tools.keys()))
+            if matches:
+                await self.load_tool(matches[0])
+            else:
+                self.write_line(f"[{MUTED}]no such tool: {text[1:].strip()}[/]")
         elif shell.tool is not None and shell.arg_index < len(shell.pending_args):
             await self.collect_argument(text)
 
     async def load_tool(self, name: str) -> None:
-        module = discover_tools().get(name)
+        module = self.tools.get(name)
         if module is None:
             self.write_line(f"[{MUTED}]no such tool: {name}[/]")
             return
@@ -161,7 +225,7 @@ class Pykaxe(App):
     def prompt_next_arg(self) -> None:
         shell = self.shells[self.current]
         action = shell.pending_args[shell.arg_index]
-        self.write_line(f"enter {action.dest}")
+        self.write_line(f"[{MUTED}]enter {action.dest}[/]")
 
     async def collect_argument(self, value: str) -> None:
         shell = self.shells[self.current]
@@ -193,10 +257,13 @@ class Pykaxe(App):
 
         if killed:
             return
+
+        self.write_line("")
         if stdout:
             self.write_line(stdout.decode().rstrip())
         if stderr:
             self.write_line(f"[{MUTED}]{stderr.decode().rstrip()}[/]")
+        self.write_line("")
 
         shell.arg_index = 0
         shell.values = {}
@@ -221,6 +288,10 @@ class Pykaxe(App):
             self.process.kill()
             self.process = None
             self.write_line(f"[{MUTED}]interrupted[/]")
+
+    def action_scan_tools(self) -> None:
+        self.tools = discover_tools()
+        self.write_line(f"[{MUTED}]scanned {len(self.tools)} tool(s)[/]")
 
     def update_badge(self) -> None:
         shell = self.shells[self.current]
