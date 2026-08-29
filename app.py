@@ -43,12 +43,9 @@ MAX_TOOL_RUNTIME_SECONDS = 30 * 60  # wall-clock safety net for polling loops
 
 POSIX = sys.platform != "win32"
 
-SHORTCUTS = (
-    f"[{WHITE}]ctrl+q[/] [{MUTED}]quit[/]   "
-    f"[{WHITE}]ctrl+n[/] [{MUTED}]new[/]   "
-    f"[{WHITE}]ctrl+s[/] [{MUTED}]scan[/]   "
-    f"[{WHITE}]tab[/] [{MUTED}]cycle[/]"
-)
+
+def footer_label(key: str, label: str) -> str:
+    return f"[{WHITE}]{escape_markup(f'[{key}]')}[/] [{MUTED}]{label}[/]"
 
 
 def fuzzy_filter(query: str, names: list[str]) -> list[str]:
@@ -124,9 +121,10 @@ class Shell:
 
 class StatusBar(Horizontal):
     def compose(self) -> ComposeResult:
-        yield Button("esc interrupt", id="interrupt")
-        yield Static("", id="shelllabel")
-        yield Static(SHORTCUTS, id="shortcuts")
+        yield Button(footer_label("esc", "interrupt"), id="interrupt", classes="footer-btn")
+        yield Button(footer_label("ctrl+y", "copy"), id="copy_output", classes="footer-btn")
+        yield Button(footer_label("ctrl+s", "scan"), id="scan_tools", classes="footer-btn")
+        yield Button(footer_label("ctrl+c", "quit"), id="quit", classes="footer-btn")
 
 
 class Pykaxe(App):
@@ -135,10 +133,13 @@ class Pykaxe(App):
         background: {BG};
     }}
     #badge {{
+        display: none;
         height: 1;
-        background: {BG};
-        content-align: right middle;
+        background: {TOOL};
+        color: #1a1a1a;
+        content-align: left middle;
         padding: 0 1;
+        text-style: bold;
     }}
     RichLog {{
         background: {BG};
@@ -150,12 +151,6 @@ class Pykaxe(App):
         scrollbar-color-hover: {MUTED};
         scrollbar-background-active: {BG};
         scrollbar-color-active: {WHITE};
-    }}
-    #copybar {{
-        height: 1;
-        background: {BG};
-        content-align: right middle;
-        padding: 0 1;
     }}
     Button {{
         background: {BG};
@@ -169,12 +164,6 @@ class Pykaxe(App):
     }}
     Button:focus {{
         text-style: none;
-    }}
-    #copy_output {{
-        min-width: 0;
-        height: 1;
-        background: {BG};
-        border: none;
     }}
     #bottom {{
         dock: bottom;
@@ -193,19 +182,12 @@ class Pykaxe(App):
         background: {BG};
         padding: 0 1;
     }}
-    #interrupt {{
+    .footer-btn {{
         min-width: 0;
         height: 1;
         background: {BG};
         border: none;
-    }}
-    #shelllabel {{
-        width: 1fr;
-        content-align: center middle;
-    }}
-    #shortcuts {{
-        width: auto;
-        content-align: right middle;
+        margin-right: 2;
     }}
     #suggestions {{
         display: none;
@@ -231,9 +213,8 @@ class Pykaxe(App):
     """
 
     BINDINGS = [
-        Binding("ctrl+q", "quit", "Quit"),
-        Binding("tab", "cycle_shell", "Cycle shell", priority=True),
-        Binding("ctrl+n", "new_shell", "New shell"),
+        Binding("ctrl+c", "quit", "Quit", priority=True),
+        Binding("ctrl+y", "copy_output", "Copy output"),
         Binding("ctrl+s", "scan_tools", "Scan tools"),
         # priority=True: this must win over whatever widget has focus (e.g.
         # the Input) so a runaway tool can always be killed immediately.
@@ -242,24 +223,42 @@ class Pykaxe(App):
 
     def __init__(self) -> None:
         super().__init__(ansi_color=True)
-        self.shells: list[Shell] = [Shell()]
-        self.current = 0
+        self.shell = Shell()
         self.tools: dict[str, ModuleType] = {}
 
     def compose(self) -> ComposeResult:
         yield Static("", id="badge")
         yield RichLog(markup=True, wrap=True, max_lines=MAX_OUTPUT_LINES)
-        with Horizontal(id="copybar"):
-            yield Button("copy output", id="copy_output")
         with Vertical(id="bottom"):
             yield OptionList(id="suggestions")
-            yield Input(placeholder="Type your message here...")
+            yield Input(placeholder="Type / to load a tool...")
             yield StatusBar()
 
     def on_mount(self) -> None:
         self.tools = discover_tools()
-        self.refresh_content()
+        self._show_welcome()
+        self.update_badge()
         self._focus_input()
+
+    def _clear_screen(self) -> None:
+        self.shell.lines.clear()
+        self.query_one(RichLog).clear()
+
+    def _show_welcome(self) -> None:
+        self.write_line(f"[{WHITE}]pykaxe[/]")
+        self.write_line("")
+        if self.tools:
+            self.write_line(f"[{MUTED}]available tools[/]")
+            width = max(len(name) for name in self.tools)
+            for name in sorted(self.tools):
+                desc = getattr(self.tools[name], "TOOL_DESCRIPTION", "")
+                line = f"  [{TOOL}]/{escape_markup(name)}[/]"
+                if desc:
+                    line += f"{' ' * (width - len(name))}  [{MUTED}]{escape_markup(desc)}[/]"
+                self.write_line(line)
+            self.write_line("")
+        self.write_line(f"[{MUTED}]type / to load a tool[/]")
+        self.write_line("")
 
     def _focus_input(self) -> None:
         self.query_one(Input).focus()
@@ -273,11 +272,11 @@ class Pykaxe(App):
 
     def write_line_to(self, shell: Shell, text: str) -> None:
         shell.lines.append(text)
-        if shell is self.shells[self.current]:
+        if shell is self.shell:
             self.query_one(RichLog).write(text)
 
     def write_line(self, text: str) -> None:
-        self.write_line_to(self.shells[self.current], text)
+        self.write_line_to(self.shell, text)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         suggestions = self.query_one("#suggestions", OptionList)
@@ -311,7 +310,7 @@ class Pykaxe(App):
         event.input.value = ""
         self.query_one("#suggestions", OptionList).display = False
 
-        shell = self.shells[self.current]
+        shell = self.shell
         if text.startswith("/"):
             query = text[1:].strip()
             matches = fuzzy_filter(query, list(self.tools.keys()))
@@ -325,12 +324,15 @@ class Pykaxe(App):
             self.write_line(text)
             self.write_line("")
             await self.collect_argument(text)
+        elif shell.tool is None:
+            self.write_line(f"[{MUTED}]select a tool first — type / to see available tools[/]")
+            self.write_line("")
         else:
             self.write_line(text)
             self.write_line("")
 
     async def load_tool(self, name: str) -> None:
-        shell = self.shells[self.current]
+        shell = self.shell
         if shell.process is not None:
             self.write_line(f"[{MUTED}]a tool is running in this shell — press esc to stop it first[/]")
             self.write_line("")
@@ -359,6 +361,8 @@ class Pykaxe(App):
         shell.arg_index = 0
         shell.values = {}
 
+        self._clear_screen()
+
         desc = getattr(module, "TOOL_DESCRIPTION", "")
         banner = f"[{TOOL}]{escape_markup(name)}[/]"
         if desc:
@@ -373,13 +377,15 @@ class Pykaxe(App):
             await self.run_tool(shell)
 
     def prompt_next_arg(self) -> None:
-        shell = self.shells[self.current]
+        shell = self.shell
+        if not shell.pending_args:
+            return
         action = shell.pending_args[shell.arg_index]
         self.write_line(f"[{MUTED}]enter {action.dest}:[/]")
         self.write_line("")
 
     async def collect_argument(self, value: str) -> None:
-        shell = self.shells[self.current]
+        shell = self.shell
         action = shell.pending_args[shell.arg_index]
         shell.values[action.dest] = value
         shell.arg_index += 1
@@ -470,12 +476,12 @@ class Pykaxe(App):
             self.write_line_to(shell, f"[{MUTED}]exited with code {returncode}[/]")
 
         self.write_line_to(shell, "")
-        if shell is self.shells[self.current]:
+        if shell is self.shell:
             self.update_badge()
 
         shell.arg_index = 0
         shell.values = {}
-        if shell is self.shells[self.current]:
+        if shell is self.shell:
             self.prompt_next_arg()
 
     async def _watchdog(self, shell: Shell, process: asyncio.subprocess.Process) -> None:
@@ -497,15 +503,20 @@ class Pykaxe(App):
         with contextlib.suppress(ProcessLookupError):
             process.kill()
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "interrupt":
             self.action_interrupt()
         elif event.button.id == "copy_output":
-            self._copy_output()
+            self.action_copy_output()
+        elif event.button.id == "scan_tools":
+            self.action_scan_tools()
+        elif event.button.id == "quit":
+            await self.action_quit()
+            return
         self._focus_input()
 
-    def _copy_output(self) -> None:
-        shell = self.shells[self.current]
+    def action_copy_output(self) -> None:
+        shell = self.shell
         text = "\n".join(Text.from_markup(line).plain for line in shell.lines)
         if not text:
             self.write_line(f"[{MUTED}]nothing to copy[/]")
@@ -529,39 +540,29 @@ class Pykaxe(App):
         self.write_line("")
 
     async def action_quit(self) -> None:
-        """Stop any running tools and let their output finish draining
-        before closing, instead of yanking the terminal away mid-output and
-        leaving killed processes to be reaped after the app is gone."""
-        running = [shell for shell in self.shells if shell.process is not None]
-        for shell in running:
-            self.write_line_to(shell, f"[{MUTED}]shutting down — stopping running tool...[/]")
-            self._kill_process(shell.process)
+        """Stop any running tool and let its output finish draining before
+        closing, instead of yanking the terminal away mid-output and
+        leaving a killed process to be reaped after the app is gone. Shows
+        a closing message for a couple seconds so the exit is visible
+        rather than the terminal vanishing instantly."""
+        if self.shell.process is not None:
+            self.write_line(f"[{MUTED}]shutting down — stopping running tool...[/]")
+            self._kill_process(self.shell.process)
 
-        tasks = [shell.runner_task for shell in self.shells if shell.runner_task is not None]
-        if tasks:
+        if self.shell.runner_task is not None:
             with contextlib.suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=5)
+                await asyncio.wait_for(self.shell.runner_task, timeout=5)
 
+        self.write_line(f"[{MUTED}]closing pykaxe...[/]")
+        await asyncio.sleep(2)
         self.exit()
-
-    def action_new_shell(self) -> None:
-        self.shells.append(Shell())
-        self.current = len(self.shells) - 1
-        self.refresh_content()
-        self._focus_input()
-
-    def action_cycle_shell(self) -> None:
-        if len(self.shells) > 1:
-            self.current = (self.current + 1) % len(self.shells)
-            self.refresh_content()
-        self._focus_input()
 
     def action_interrupt(self) -> None:
         suggestions = self.query_one("#suggestions", OptionList)
         if suggestions.display:
             suggestions.display = False
 
-        shell = self.shells[self.current]
+        shell = self.shell
         if shell.process is not None:
             self._kill_process(shell.process)
             self.write_line(f"[{MUTED}]interrupted[/]")
@@ -571,24 +572,17 @@ class Pykaxe(App):
         self.write_line(f"[{MUTED}]scanned {len(self.tools)} tool(s)[/]")
         self.write_line("")
 
+
     def update_badge(self) -> None:
-        shell = self.shells[self.current]
+        shell = self.shell
         badge = self.query_one("#badge", Static)
         if shell.tool:
-            state = f" [{MUTED}](running)[/]" if shell.process is not None else ""
-            badge.update(f"[{TOOL} on {BORDER}] {escape_markup(shell.tool)} [/]{state}")
+            state = "running" if shell.process is not None else "active"
+            badge.update(f"pykaxe {state} > {escape_markup(shell.tool)}")
+            badge.display = True
         else:
             badge.update("")
-
-    def refresh_content(self) -> None:
-        log = self.query_one(RichLog)
-        log.clear()
-        for line in self.shells[self.current].lines:
-            log.write(line)
-        self.query_one("#shelllabel", Static).update(
-            f"[{TOOL}]shell {self.current + 1}/{len(self.shells)}[/]"
-        )
-        self.update_badge()
+            badge.display = False
 
 
 if __name__ == "__main__":
