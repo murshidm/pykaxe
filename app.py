@@ -25,7 +25,8 @@ from rich.text import Text
 
 WHITE = "#f2f2f2"
 MUTED = "#8a8a8a"
-BORDER = "#2c2c2c"
+BORDER = "#3a3a3a"
+BG = "ansi_default"
 RESULT = "#7ee787"
 TOOL = "#f2c94c"
 
@@ -130,38 +131,72 @@ class StatusBar(Horizontal):
 
 class Pykaxe(App):
     CSS = f"""
+    Screen {{
+        background: {BG};
+    }}
     #badge {{
         height: 1;
+        background: {BG};
         content-align: right middle;
         padding: 0 1;
     }}
     RichLog {{
+        background: {BG};
         border: round {BORDER};
+        scrollbar-background: transparent;
+        scrollbar-color: transparent;
+        scrollbar-corner-color: transparent;
+        scrollbar-background-hover: {BG};
+        scrollbar-color-hover: {MUTED};
+        scrollbar-background-active: {BG};
+        scrollbar-color-active: {WHITE};
     }}
     #copybar {{
         height: 1;
+        background: {BG};
         content-align: right middle;
         padding: 0 1;
+    }}
+    Button {{
+        background: {BG};
+        border: solid {BORDER};
+        text-style: none;
+    }}
+    Button:hover {{
+        background: {BG};
+        border: solid {WHITE};
+        text-style: none;
+    }}
+    Button:focus {{
+        text-style: none;
     }}
     #copy_output {{
         min-width: 0;
         height: 1;
+        background: {BG};
         border: none;
     }}
     #bottom {{
         dock: bottom;
         height: auto;
+        background: {BG};
     }}
     Input {{
+        background: {BG};
         border: round {BORDER};
+    }}
+    Input:focus {{
+        border: round {WHITE};
     }}
     StatusBar {{
         height: 1;
+        background: {BG};
         padding: 0 1;
     }}
     #interrupt {{
         min-width: 0;
         height: 1;
+        background: {BG};
         border: none;
     }}
     #shelllabel {{
@@ -176,7 +211,22 @@ class Pykaxe(App):
         display: none;
         height: auto;
         max-height: 6;
+        background: {BG};
         border: round {BORDER};
+        scrollbar-background: transparent;
+        scrollbar-color: transparent;
+        scrollbar-corner-color: transparent;
+        scrollbar-background-hover: {BG};
+        scrollbar-color-hover: {MUTED};
+        scrollbar-background-active: {BG};
+        scrollbar-color-active: {WHITE};
+    }}
+    OptionList {{
+        background: {BG};
+    }}
+    OptionList > .option-list--option-highlighted {{
+        background: {BORDER};
+        text-style: none;
     }}
     """
 
@@ -191,7 +241,7 @@ class Pykaxe(App):
     ]
 
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(ansi_color=True)
         self.shells: list[Shell] = [Shell()]
         self.current = 0
         self.tools: dict[str, ModuleType] = {}
