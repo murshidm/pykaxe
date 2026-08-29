@@ -1,8 +1,17 @@
 import asyncio
+import contextlib
 import importlib.util
+import os
+import signal
 import sys
+from collections import deque
 from pathlib import Path
 from types import ModuleType
+
+try:
+    import resource
+except ImportError:  # Windows has no resource module
+    resource = None
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -15,6 +24,17 @@ MUTED = "#8a8a8a"
 BORDER = "#2c2c2c"
 
 TOOLS_DIR = Path(__file__).resolve().parent / "tools"
+
+# Protection limits for running tools. Tool scripts are user-authored and
+# untrusted, so every guard here lives on the app side rather than relying
+# on the script to behave.
+MAX_OUTPUT_LINES = 2000  # scrollback kept per shell (and in the RichLog widget)
+MAX_OUTPUT_BYTES = 4 * 1024 * 1024  # auto-kill a tool that floods stdout/stderr
+MAX_TOOL_MEMORY_BYTES = 256 * 1024 * 1024  # RLIMIT_AS ceiling for a tool process
+MAX_TOOL_CPU_SECONDS = 120  # RLIMIT_CPU ceiling; catches tight busy-loops fast
+MAX_TOOL_RUNTIME_SECONDS = 30 * 60  # wall-clock safety net for polling loops
+
+POSIX = sys.platform != "win32"
 
 SHORTCUTS = (
     f"[{WHITE}]ctrl+q[/] [{MUTED}]quit[/]   "
@@ -66,14 +86,33 @@ def discover_tools() -> dict[str, ModuleType]:
     return tools
 
 
+def _limit_tool_resources() -> None:
+    """Runs in the child process right before exec (POSIX only). Best
+    effort: caps are silently skipped where the platform won't allow them,
+    since this is a safety net, not the primary defense (that's the app
+    being able to kill the process outright at any time)."""
+    if resource is None:
+        return
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (MAX_TOOL_MEMORY_BYTES, MAX_TOOL_MEMORY_BYTES))
+    except (ValueError, OSError):
+        pass
+    try:
+        resource.setrlimit(resource.RLIMIT_CPU, (MAX_TOOL_CPU_SECONDS, MAX_TOOL_CPU_SECONDS))
+    except (ValueError, OSError):
+        pass
+
+
 class Shell:
     def __init__(self) -> None:
-        self.lines: list[str] = []
+        self.lines: deque[str] = deque(maxlen=MAX_OUTPUT_LINES)
         self.tool: str | None = None
         self.script: Path | None = None
         self.pending_args: list = []
         self.arg_index: int = 0
         self.values: dict[str, str] = {}
+        self.process: asyncio.subprocess.Process | None = None
+        self.runner_task: asyncio.Task | None = None
 
 
 class StatusBar(Horizontal):
@@ -130,19 +169,20 @@ class Pykaxe(App):
         Binding("tab", "cycle_shell", "Cycle shell", priority=True),
         Binding("ctrl+n", "new_shell", "New shell"),
         Binding("ctrl+s", "scan_tools", "Scan tools"),
-        Binding("escape", "interrupt", "Interrupt"),
+        # priority=True: this must win over whatever widget has focus (e.g.
+        # the Input) so a runaway tool can always be killed immediately.
+        Binding("escape", "interrupt", "Interrupt", priority=True),
     ]
 
     def __init__(self) -> None:
         super().__init__()
         self.shells: list[Shell] = [Shell()]
         self.current = 0
-        self.process: asyncio.subprocess.Process | None = None
         self.tools: dict[str, ModuleType] = {}
 
     def compose(self) -> ComposeResult:
         yield Static("", id="badge")
-        yield RichLog(markup=True, wrap=True)
+        yield RichLog(markup=True, wrap=True, max_lines=MAX_OUTPUT_LINES)
         with Vertical(id="bottom"):
             yield OptionList(id="suggestions")
             yield Input(placeholder="Type your message here...")
@@ -152,9 +192,13 @@ class Pykaxe(App):
         self.tools = discover_tools()
         self.refresh_content()
 
+    def write_line_to(self, shell: Shell, text: str) -> None:
+        shell.lines.append(text)
+        if shell is self.shells[self.current]:
+            self.query_one(RichLog).write(text)
+
     def write_line(self, text: str) -> None:
-        self.shells[self.current].lines.append(text)
-        self.query_one(RichLog).write(text)
+        self.write_line_to(self.shells[self.current], text)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         suggestions = self.query_one("#suggestions", OptionList)
@@ -197,6 +241,11 @@ class Pykaxe(App):
             await self.collect_argument(text)
 
     async def load_tool(self, name: str) -> None:
+        shell = self.shells[self.current]
+        if shell.process is not None:
+            self.write_line(f"[{MUTED}]a tool is running in this shell — press esc to stop it first[/]")
+            return
+
         module = self.tools.get(name)
         if module is None:
             self.write_line(f"[{MUTED}]no such tool: {name}[/]")
@@ -212,7 +261,6 @@ class Pykaxe(App):
             if action.option_strings and action.option_strings[0] != "-h"
         ]
 
-        shell = self.shells[self.current]
         shell.tool = name
         shell.script = Path(module.__file__)
         shell.pending_args = actions
@@ -225,7 +273,7 @@ class Pykaxe(App):
     def prompt_next_arg(self) -> None:
         shell = self.shells[self.current]
         action = shell.pending_args[shell.arg_index]
-        self.write_line(f"[{MUTED}]enter {action.dest}[/]")
+        self.write_line(f"[{MUTED}]enter {action.dest}:[/]")
 
     async def collect_argument(self, value: str) -> None:
         shell = self.shells[self.current]
@@ -239,35 +287,107 @@ class Pykaxe(App):
             await self.run_tool(shell)
 
     async def run_tool(self, shell: Shell) -> None:
+        if shell.process is not None:
+            self.write_line(f"[{MUTED}]a tool is already running in this shell — press esc to stop it first[/]")
+            return
+
         args = []
         for action in shell.pending_args:
             args.append(action.option_strings[0])
             args.append(shell.values[action.dest])
 
-        self.process = await asyncio.create_subprocess_exec(
-            sys.executable,
-            str(shell.script),
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await self.process.communicate()
-        killed = self.process is None
-        self.process = None
+        kwargs: dict = {}
+        if POSIX:
+            # New session -> its own process group, so a kill reaches any
+            # children the tool spawns too, not just the direct child.
+            kwargs["preexec_fn"] = _limit_tool_resources
+            kwargs["start_new_session"] = True
 
-        if killed:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                str(shell.script),
+                *args,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                **kwargs,
+            )
+        except Exception as exc:
+            self.write_line(f"[{MUTED}]failed to start {shell.tool}: {exc}[/]")
             return
 
-        self.write_line("")
-        if stdout:
-            self.write_line(stdout.decode().rstrip())
-        if stderr:
-            self.write_line(f"[{MUTED}]{stderr.decode().rstrip()}[/]")
-        self.write_line("")
+        shell.process = process
+        self.update_badge()
+        shell.runner_task = asyncio.create_task(self._run_and_pump(shell, process))
+
+    async def _run_and_pump(self, shell: Shell, process: asyncio.subprocess.Process) -> None:
+        """Streams a running tool's output as it arrives instead of
+        buffering it all in memory until exit — that buffering is what let
+        an infinite-loop tool grow without bound and look frozen while it
+        produced no visible output at all."""
+        self.write_line_to(shell, "")
+        watchdog = asyncio.create_task(self._watchdog(shell, process))
+        total_bytes = 0
+        killed_reason: str | None = None
+
+        try:
+            assert process.stdout is not None
+            while True:
+                try:
+                    line = await process.stdout.readline()
+                except (asyncio.IncompleteReadError, ValueError):
+                    break
+                if not line:
+                    break
+                total_bytes += len(line)
+                self.write_line_to(shell, line.decode(errors="replace").rstrip("\n"))
+                if total_bytes > MAX_OUTPUT_BYTES:
+                    killed_reason = "exceeded output limit"
+                    self._kill_process(process)
+                    break
+        finally:
+            watchdog.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watchdog
+            returncode = await process.wait()
+
+        if shell.process is process:
+            shell.process = None
+        shell.runner_task = None
+
+        if killed_reason:
+            self.write_line_to(shell, f"[{MUTED}]tool killed: {killed_reason}[/]")
+        elif returncode not in (0, None, -9, -15):
+            self.write_line_to(shell, f"[{MUTED}]exited with code {returncode}[/]")
+
+        self.write_line_to(shell, "")
+        if shell is self.shells[self.current]:
+            self.update_badge()
 
         shell.arg_index = 0
         shell.values = {}
-        self.prompt_next_arg()
+        if shell is self.shells[self.current]:
+            self.prompt_next_arg()
+
+    async def _watchdog(self, shell: Shell, process: asyncio.subprocess.Process) -> None:
+        await asyncio.sleep(MAX_TOOL_RUNTIME_SECONDS)
+        self.write_line_to(
+            shell, f"[{MUTED}]tool killed: exceeded {MAX_TOOL_RUNTIME_SECONDS}s runtime limit[/]"
+        )
+        self._kill_process(process)
+
+    def _kill_process(self, process: asyncio.subprocess.Process) -> None:
+        if process.returncode is not None:
+            return
+        if POSIX:
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                return
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "interrupt":
@@ -284,9 +404,13 @@ class Pykaxe(App):
             self.refresh_content()
 
     def action_interrupt(self) -> None:
-        if self.process is not None:
-            self.process.kill()
-            self.process = None
+        suggestions = self.query_one("#suggestions", OptionList)
+        if suggestions.display:
+            suggestions.display = False
+
+        shell = self.shells[self.current]
+        if shell.process is not None:
+            self._kill_process(shell.process)
             self.write_line(f"[{MUTED}]interrupted[/]")
 
     def action_scan_tools(self) -> None:
@@ -297,7 +421,8 @@ class Pykaxe(App):
         shell = self.shells[self.current]
         badge = self.query_one("#badge", Static)
         if shell.tool:
-            badge.update(f"[{WHITE} on {BORDER}] {shell.tool} [/]")
+            state = f" [{MUTED}](running)[/]" if shell.process is not None else ""
+            badge.update(f"[{WHITE} on {BORDER}] {shell.tool} [/]{state}")
         else:
             badge.update("")
 
