@@ -3,6 +3,7 @@ import contextlib
 import importlib.util
 import os
 import signal
+import subprocess
 import sys
 from collections import deque
 from pathlib import Path
@@ -20,6 +21,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Input, OptionList, RichLog, Static
 from textual.widgets.option_list import Option
 from rich.markup import escape as escape_markup
+from rich.text import Text
 
 WHITE = "#f2f2f2"
 MUTED = "#8a8a8a"
@@ -42,9 +44,9 @@ POSIX = sys.platform != "win32"
 
 SHORTCUTS = (
     f"[{WHITE}]ctrl+q[/] [{MUTED}]quit[/]   "
-    f"[{WHITE}]ctrl+n[/] [{MUTED}]new shell[/]   "
-    f"[{WHITE}]ctrl+s[/] [{MUTED}]scan tools[/]   "
-    f"[{WHITE}]tab[/] [{MUTED}]cycle shell[/]"
+    f"[{WHITE}]ctrl+n[/] [{MUTED}]new[/]   "
+    f"[{WHITE}]ctrl+s[/] [{MUTED}]scan[/]   "
+    f"[{WHITE}]tab[/] [{MUTED}]cycle[/]"
 )
 
 
@@ -136,6 +138,16 @@ class Pykaxe(App):
     RichLog {{
         border: round {BORDER};
     }}
+    #copybar {{
+        height: 1;
+        content-align: right middle;
+        padding: 0 1;
+    }}
+    #copy_output {{
+        min-width: 0;
+        height: 1;
+        border: none;
+    }}
     #bottom {{
         dock: bottom;
         height: auto;
@@ -187,6 +199,8 @@ class Pykaxe(App):
     def compose(self) -> ComposeResult:
         yield Static("", id="badge")
         yield RichLog(markup=True, wrap=True, max_lines=MAX_OUTPUT_LINES)
+        with Horizontal(id="copybar"):
+            yield Button("copy output", id="copy_output")
         with Vertical(id="bottom"):
             yield OptionList(id="suggestions")
             yield Input(placeholder="Type your message here...")
@@ -433,7 +447,33 @@ class Pykaxe(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "interrupt":
             self.action_interrupt()
+        elif event.button.id == "copy_output":
+            self._copy_output()
         self._focus_input()
+
+    def _copy_output(self) -> None:
+        shell = self.shells[self.current]
+        text = "\n".join(Text.from_markup(line).plain for line in shell.lines)
+        if not text:
+            self.write_line(f"[{MUTED}]nothing to copy[/]")
+            self.write_line("")
+            return
+
+        if sys.platform == "darwin":
+            # OSC 52 (Textual's copy_to_clipboard) is ignored or blocked by
+            # most terminals, including Terminal.app — pbcopy is the one
+            # path that reliably reaches the system clipboard here.
+            try:
+                subprocess.run(["pbcopy"], input=text.encode(), check=True)
+            except (OSError, subprocess.CalledProcessError) as exc:
+                self.write_line(f"[{MUTED}]copy failed: {exc}[/]")
+                self.write_line("")
+                return
+        else:
+            self.copy_to_clipboard(text)
+
+        self.write_line(f"[{MUTED}]output copied to clipboard[/]")
+        self.write_line("")
 
     def action_new_shell(self) -> None:
         self.shells.append(Shell())
