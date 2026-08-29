@@ -242,7 +242,10 @@ class Pykaxe(App):
             return
         for name in matches[:8]:
             desc = getattr(self.tools[name], "TOOL_DESCRIPTION", "")
-            suggestions.add_option(Option(f"{name} — {desc}" if desc else name, id=name))
+            label = f"[{TOOL}]{escape_markup(name)}[/]"
+            if desc:
+                label += f": {escape_markup(desc)}"
+            suggestions.add_option(Option(label, id=name))
         suggestions.display = True
 
     async def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -289,7 +292,7 @@ class Pykaxe(App):
             self.write_line("")
             return
         if not hasattr(module, "build_parser"):
-            self.write_line(f"[{MUTED}]{name} has no build_parser()[/]")
+            self.write_line(f"[{TOOL}]{escape_markup(name)}[/] [{MUTED}]has no build_parser()[/]")
             self.write_line("")
             return
 
@@ -475,6 +478,22 @@ class Pykaxe(App):
         self.write_line(f"[{MUTED}]output copied to clipboard[/]")
         self.write_line("")
 
+    async def action_quit(self) -> None:
+        """Stop any running tools and let their output finish draining
+        before closing, instead of yanking the terminal away mid-output and
+        leaving killed processes to be reaped after the app is gone."""
+        running = [shell for shell in self.shells if shell.process is not None]
+        for shell in running:
+            self.write_line_to(shell, f"[{MUTED}]shutting down — stopping running tool...[/]")
+            self._kill_process(shell.process)
+
+        tasks = [shell.runner_task for shell in self.shells if shell.runner_task is not None]
+        if tasks:
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=5)
+
+        self.exit()
+
     def action_new_shell(self) -> None:
         self.shells.append(Shell())
         self.current = len(self.shells) - 1
@@ -507,7 +526,7 @@ class Pykaxe(App):
         badge = self.query_one("#badge", Static)
         if shell.tool:
             state = f" [{MUTED}](running)[/]" if shell.process is not None else ""
-            badge.update(f"[{WHITE} on {BORDER}] {shell.tool} [/]{state}")
+            badge.update(f"[{TOOL} on {BORDER}] {escape_markup(shell.tool)} [/]{state}")
         else:
             badge.update("")
 
