@@ -36,7 +36,7 @@ Homepage = "https://github.com/murshidm/pykaxe"
 Issues = "https://github.com/murshidm/pykaxe/issues"
 
 [project.scripts]
-pykaxe = "pykaxe.app:run"
+pykaxe = "pykaxe.cli:main"
 
 [project.optional-dependencies]
 dev = [
