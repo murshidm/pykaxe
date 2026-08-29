@@ -1,3 +1,9 @@
+import asyncio
+import importlib.util
+import shlex
+import sys
+from pathlib import Path
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -6,6 +12,27 @@ from textual.widgets import Button, Input, RichLog, Static
 WHITE = "#f2f2f2"
 MUTED = "#8a8a8a"
 BORDER = "#2c2c2c"
+
+TOOLS_DIR = Path(__file__).resolve().parent / "tools"
+
+
+def discover_tools() -> dict[str, Path]:
+    tools: dict[str, Path] = {}
+    if not TOOLS_DIR.is_dir():
+        return tools
+    for script in TOOLS_DIR.glob("*.py"):
+        spec = importlib.util.spec_from_file_location(script.stem, script)
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            continue
+        name = getattr(module, "TOOL_NAME", None)
+        if name:
+            tools[name] = script
+    return tools
 
 SHORTCUTS = (
     f"[{WHITE}]ctrl+q[/] [{MUTED}]quit[/]   "
@@ -63,9 +90,10 @@ class Pykaxe(App):
         super().__init__()
         self.buffers: list[list[str]] = [[]]
         self.current = 0
+        self.process: asyncio.subprocess.Process | None = None
 
     def compose(self) -> ComposeResult:
-        yield RichLog()
+        yield RichLog(markup=True, wrap=True)
         with Vertical(id="bottom"):
             yield Input(placeholder="Type your message here...")
             yield StatusBar()
@@ -73,10 +101,49 @@ class Pykaxe(App):
     def on_mount(self) -> None:
         self.refresh_content()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.buffers[self.current].append(event.value)
-        self.query_one(RichLog).write(event.value)
+    def write_line(self, text: str) -> None:
+        self.buffers[self.current].append(text)
+        self.query_one(RichLog).write(text)
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        text = event.value
         event.input.value = ""
+        self.write_line(text)
+        if text.startswith("/"):
+            await self.run_command(text[1:].strip())
+
+    async def run_command(self, command_line: str) -> None:
+        try:
+            parts = shlex.split(command_line)
+        except ValueError as exc:
+            self.write_line(f"[{MUTED}]error: {exc}[/]")
+            return
+        if not parts:
+            return
+
+        name, args = parts[0], parts[1:]
+        script = discover_tools().get(name)
+        if script is None:
+            self.write_line(f"[{MUTED}]no such tool: {name}[/]")
+            return
+
+        self.process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            str(script),
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await self.process.communicate()
+        killed = self.process is None
+        self.process = None
+
+        if killed:
+            return
+        if stdout:
+            self.write_line(stdout.decode().rstrip())
+        if stderr:
+            self.write_line(f"[{MUTED}]{stderr.decode().rstrip()}[/]")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "interrupt":
@@ -93,7 +160,10 @@ class Pykaxe(App):
             self.refresh_content()
 
     def action_interrupt(self) -> None:
-        pass
+        if self.process is not None:
+            self.process.kill()
+            self.process = None
+            self.write_line(f"[{MUTED}]interrupted[/]")
 
     def refresh_content(self) -> None:
         log = self.query_one(RichLog)
