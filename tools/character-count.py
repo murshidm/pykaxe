@@ -5,7 +5,7 @@ TOOL_NAME = "character-count"
 TOOL_DESCRIPTION = "Count the number of characters in text."
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=TOOL_NAME,
         description=TOOL_DESCRIPTION,
@@ -16,8 +16,11 @@ def main() -> int:
         required=True,
         help="Text to count characters in.",
     )
+    return parser
 
-    args = parser.parse_args()
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     try:
         count = len(args.text)
