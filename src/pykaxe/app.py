@@ -585,5 +585,9 @@ class Pykaxe(App):
             badge.display = False
 
 
-if __name__ == "__main__":
+def run() -> None:
     Pykaxe().run()
+
+
+if __name__ == "__main__":
+    run()
