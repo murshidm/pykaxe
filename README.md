@@ -2,10 +2,10 @@
 
 A terminal UI for discovering and running small Python CLI tools.
 
-`pykaxe` scans a `tools/` directory for standalone Python scripts, lets you
-fuzzy-search and launch them from a single prompt, and streams their output
-live — with sandboxing (memory/CPU/runtime limits, output caps) so a runaway
-tool can't take the terminal down with it.
+`pykaxe` scans a tools directory you choose for standalone Python scripts,
+lets you fuzzy-search and launch them from a single prompt, and streams
+their output live — with sandboxing (memory/CPU/runtime limits, output caps)
+so a runaway tool can't take the terminal down with it.
 
 ## Install
 
@@ -25,9 +25,21 @@ pipx install pykaxe
 pykaxe
 ```
 
+The first time you run it, pykaxe asks where to keep your tools:
+
+```
+Where should pykaxe store your tools? [~/.pykaxe/tools]:
+```
+
+Press Enter to accept the default or type a different path. It creates that
+folder, seeds it with a few example tools, and remembers your choice in
+`~/.pykaxe/config.json` — you won't be asked again. Override it for a single
+run with the `PYKAXE_TOOLS_DIR` environment variable.
+
 Type `/` to see available tools, fuzzy-filter by typing part of a name, and
 press Enter to select. If a tool declares arguments, pykaxe prompts for each
-one in turn before running it.
+one in turn — showing its choices/default/help when it declares them —
+before running it.
 
 | Key      | Action               |
 | -------- | -------------------- |
@@ -37,10 +49,38 @@ one in turn before running it.
 | `ctrl+s` | Re-scan tools directory |
 | `ctrl+c` | Quit                  |
 
-## Writing a tool
+## Getting an AI to write a tool
 
-A tool is a Python script placed in `src/pykaxe/tools/` (or contributed via
-a PR) that exposes this contract:
+```bash
+pykaxe prompt --copy
+```
+
+copies a short prompt to your clipboard that explains the tool contract
+below. Paste it into ChatGPT or Claude.ai once, then ask for tools in plain
+language:
+
+> Generate a pykaxe script to convert Celsius to Fahrenheit.
+
+Save what it gives you as a `.py` file and run:
+
+```bash
+pykaxe add path/to/the-script.py
+```
+
+which checks it against the contract and copies it into your tools folder —
+it shows up next time you type `/`.
+
+If you're using a coding agent with filesystem access (e.g. [Claude
+Code](https://claude.com/claude-code)), run `pykaxe skill` once to install a
+skill that writes tools directly into your tools folder — no `pykaxe add`
+step needed. Just ask it directly:
+
+> Create a pykaxe tool that reverses a string.
+
+## Writing a tool by hand
+
+A tool is a Python script placed in your configured tools folder (see
+`pykaxe tools-dir`) that exposes this contract:
 
 ```python
 import argparse
@@ -68,7 +108,8 @@ if __name__ == "__main__":
 
 Each tool runs as its own subprocess (`python <script> --arg value ...`), so
 it must be runnable standalone and communicate purely through stdout/stderr
-and its exit code.
+and its exit code. Drop it straight into your tools folder, or validate it
+first with `pykaxe add path/to/script.py`.
 
 ## Contributing
 
@@ -79,8 +120,8 @@ and its exit code.
    make dev
    ```
 
-3. Add or edit a tool under `src/pykaxe/tools/`, or make changes to the app
-   in `src/pykaxe/app.py`.
+3. Add or edit a bundled example tool under `src/pykaxe/examples/`, or make
+   changes to the app in `src/pykaxe/app.py`.
 4. Run the tests and linter:
 
    ```bash

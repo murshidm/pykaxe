@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import contextlib
 import importlib.util
@@ -8,6 +9,8 @@ import sys
 from collections import deque
 from pathlib import Path
 from types import ModuleType
+
+from pykaxe import config
 
 try:
     import resource
@@ -29,8 +32,6 @@ BORDER = "#3a3a3a"
 BG = "ansi_default"
 RESULT = "#7ee787"
 TOOL = "#f2c94c"
-
-TOOLS_DIR = Path(__file__).resolve().parent / "tools"
 
 # Protection limits for running tools. Tool scripts are user-authored and
 # untrusted, so every guard here lives on the app side rather than relying
@@ -71,11 +72,11 @@ def fuzzy_filter(query: str, names: list[str]) -> list[str]:
     return [name for _, _, name in scored]
 
 
-def discover_tools() -> dict[str, ModuleType]:
+def discover_tools(tools_dir: Path) -> dict[str, ModuleType]:
     tools: dict[str, ModuleType] = {}
-    if not TOOLS_DIR.is_dir():
+    if not tools_dir.is_dir():
         return tools
-    for script in TOOLS_DIR.glob("*.py"):
+    for script in tools_dir.glob("*.py"):
         spec = importlib.util.spec_from_file_location(script.stem, script)
         if spec is None or spec.loader is None:
             continue
@@ -221,8 +222,9 @@ class Pykaxe(App):
         Binding("escape", "interrupt", "Interrupt", priority=True),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, tools_dir: Path) -> None:
         super().__init__(ansi_color=True)
+        self.tools_dir = tools_dir
         self.shell = Shell()
         self.tools: dict[str, ModuleType] = {}
 
@@ -235,7 +237,7 @@ class Pykaxe(App):
             yield StatusBar()
 
     def on_mount(self) -> None:
-        self.tools = discover_tools()
+        self.tools = discover_tools(self.tools_dir)
         self._show_welcome()
         self.update_badge()
         self._focus_input()
@@ -381,12 +383,32 @@ class Pykaxe(App):
         if not shell.pending_args:
             return
         action = shell.pending_args[shell.arg_index]
-        self.write_line(f"[{MUTED}]enter {action.dest}:[/]")
+        prompt = f"enter {action.dest}"
+        if action.choices:
+            prompt += f" ({'/'.join(str(c) for c in action.choices)})"
+        if action.default is not None and action.default is not argparse.SUPPRESS:
+            prompt += f" [{action.default}]"
+        self.write_line(f"[{MUTED}]{prompt}:[/]")
+        if action.help:
+            self.write_line(f"[{MUTED}]{escape_markup(action.help)}[/]")
         self.write_line("")
 
     async def collect_argument(self, value: str) -> None:
         shell = self.shell
         action = shell.pending_args[shell.arg_index]
+        value = value.strip()
+
+        has_default = action.default is not None and action.default is not argparse.SUPPRESS
+        if not value and has_default:
+            value = str(action.default)
+
+        if action.choices and value not in [str(c) for c in action.choices]:
+            choices = ", ".join(str(c) for c in action.choices)
+            self.write_line(f"[{MUTED}]must be one of: {choices}[/]")
+            self.write_line("")
+            self.prompt_next_arg()
+            return
+
         shell.values[action.dest] = value
         shell.arg_index += 1
 
@@ -568,7 +590,7 @@ class Pykaxe(App):
             self.write_line(f"[{MUTED}]interrupted[/]")
 
     def action_scan_tools(self) -> None:
-        self.tools = discover_tools()
+        self.tools = discover_tools(self.tools_dir)
         self.write_line(f"[{MUTED}]scanned {len(self.tools)} tool(s)[/]")
         self.write_line("")
 
@@ -586,7 +608,7 @@ class Pykaxe(App):
 
 
 def run() -> None:
-    Pykaxe().run()
+    Pykaxe(config.ensure_tools_dir()).run()
 
 
 if __name__ == "__main__":

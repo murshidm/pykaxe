@@ -1,4 +1,4 @@
-from pykaxe.app import run
+from pykaxe.cli import main
 
 if __name__ == "__main__":
-    run()
+    main()

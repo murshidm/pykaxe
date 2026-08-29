@@ -1,16 +1,19 @@
 import subprocess
 import sys
+from pathlib import Path
 
 from pykaxe.app import discover_tools
 
+EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "src" / "pykaxe" / "examples"
+
 
 def test_discover_tools_finds_bundled_tools():
-    tools = discover_tools()
+    tools = discover_tools(EXAMPLES_DIR)
     assert {"character-count", "word-count", "simple-calculator", "sci-fi-quote-loop"} <= set(tools)
 
 
 def test_discovered_tools_expose_the_contract():
-    for name, module in discover_tools().items():
+    for name, module in discover_tools(EXAMPLES_DIR).items():
         assert getattr(module, "TOOL_NAME", None) == name
         assert getattr(module, "TOOL_DESCRIPTION", "")
         assert hasattr(module, "build_parser")
@@ -18,7 +21,7 @@ def test_discovered_tools_expose_the_contract():
 
 
 def test_simple_calculator_runs_as_a_subprocess():
-    tools = discover_tools()
+    tools = discover_tools(EXAMPLES_DIR)
     script = tools["simple-calculator"].__file__
 
     result = subprocess.run(
