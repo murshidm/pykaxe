@@ -66,23 +66,23 @@ pip3 --version
 
 If you see a version number, you're ready for the next step.
 
-### 5. Download the PyKaxe launcher
+### 5. Download the pykaxe launcher
 
-Download [`PyKaxe.command`](launchers/PyKaxe.command) if you're on a Mac, or
-[`PyKaxe.bat`](launchers/PyKaxe.bat) if you're on Windows. Save it anywhere
+Download [`pykaxe.command`](launchers/pykaxe.command) if you're on a Mac, or
+[`pykaxe.bat`](launchers/pykaxe.bat) if you're on Windows. Save it anywhere
 you'll find it again, like your Desktop.
 
 ### 6. Double-click it
 
-**Mac:** double-click `PyKaxe.command`. The first time, macOS may warn that
+**Mac:** double-click `pykaxe.command`. The first time, macOS may warn that
 it's "from an unidentified developer" — right-click it, choose **Open**, and
 confirm. You only need to do that once.
 
-**Windows:** double-click `PyKaxe.bat`.
+**Windows:** double-click `pykaxe.bat`.
 
 A terminal window opens on its own. The first time, it may tell you it needs
 [pipx](https://pipx.pypa.io/) first and show you two commands to run — do
-that once, then double-click PyKaxe again and it'll work from then on. It
+that once, then double-click pykaxe again and it'll work from then on. It
 never installs pykaxe itself; it always fetches the latest version fresh.
 
 The very first time it actually starts, it asks where you want to keep your tools:
@@ -99,7 +99,7 @@ it in your file browser so you can save things there later:
 - **Mac:** open Finder, press `Cmd+Shift+G`, and paste the path in.
 
 Once you know where that folder is, you barely need the terminal again — you
-only double-click PyKaxe to run your tools. Everything else (getting
+only double-click pykaxe to run your tools. Everything else (getting
 code from an AI and saving it) happens in your file browser.
 
 Press `ctrl+c` to close pykaxe for now — you'll open it again once you have a
@@ -150,7 +150,7 @@ the whole pykaxe workflow, start to finish, using the ChatGPT app:
 3. Paste it into a plain text editor (like Notepad or TextEdit) and save the
    file as `extract-emails.py` **inside your pykaxe tools folder** (see
    Step 6 if you haven't found it yet).
-4. Double-click PyKaxe (the launcher from Step 5 above).
+4. Double-click pykaxe (the launcher from Step 5 above).
 
 5. Type `/`, find `extract-emails` in the list, and press Enter.
 6. Paste the block of text with the email thread when pykaxe asks for input,
@@ -165,8 +165,8 @@ opening pykaxe itself.
 
 **Easiest — double-click a launcher, no terminal typing:**
 
-Download [`PyKaxe.command`](launchers/PyKaxe.command) (macOS) or
-[`PyKaxe.bat`](launchers/PyKaxe.bat) (Windows) and double-click it. It opens
+Download [`pykaxe.command`](launchers/pykaxe.command) (macOS) or
+[`pykaxe.bat`](launchers/pykaxe.bat) (Windows) and double-click it. It opens
 a terminal for you, checks that Python and [pipx](https://pipx.pypa.io/) are
 in place (and tells you exactly what to type if not), then runs pykaxe.
 Nothing gets permanently installed — it always fetches the latest release
