@@ -183,19 +183,9 @@ first with `pykaxe add path/to/script.py`.
 ## Building & releasing
 
 This project uses [hatchling](https://hatch.pypa.io/) as its build backend.
-The version lives in `src/pykaxe/__init__.py`.
-
-```bash
-make build      # bumps the patch version, then builds sdist + wheel into dist/
-make publish    # builds, then uploads dist/* to PyPI via twine
-```
-
-To bump a minor or major version instead of a patch:
-
-```bash
-make bump-minor
-make bump-major
-```
+The version lives in `src/pykaxe/__init__.py`. For local test builds vs.
+cutting an actual release (bump → tag → CI publishes to PyPI), see
+[RELEASING.md](RELEASING.md).
 
 ## License
 

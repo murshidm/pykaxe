@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel a still-running CI run for the same branch/PR when a newer push
+# arrives, instead of letting superseded runs pile up.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest

@@ -43,6 +43,7 @@ bullet.
 | `.github/workflows/ci.yml` | Runs `ruff check` + `pytest` on push/PR across Python 3.10–3.13. |
 | `.github/workflows/release.yml` | On a `v*.*.*` tag: verifies the tag matches `__version__`, builds, publishes to PyPI + GitHub Releases. |
 | `scripts/bump_version.py` | Bumps `__version__` in `src/pykaxe/__init__.py`. Invoked by `make bump-patch/minor/major` and by `make build` (which always bumps patch first). |
+| `RELEASING.md` | The two build lanes: local testing (`make local-build`, never bumps version, never triggers CI) vs. cutting a real release (bump → commit → push → tag → push tag, which is the only thing `release.yml` publishes from). |
 
 ## The tools-dir path: four places it's written down
 
@@ -130,12 +131,12 @@ what's genuinely unaffected:
 make dev             # editable install + dev deps (pytest, ruff, build, twine)
 make test             # pytest
 make lint             # ruff check src tests
-make build             # bump patch version, then build sdist+wheel into dist/
-make bump-minor        # or bump-major — for non-patch releases
+make local-build       # build sdist+wheel from the current version, no bump — testing only
 ```
 
-Releasing is: bump version → commit → tag `vX.Y.Z` → push tag. `release.yml`
-refuses to publish if the tag doesn't match `__version__`.
+See `RELEASING.md` for the full release lane: bump version → commit → push
+`main` (CI runs) → tag `vX.Y.Z` → push tag (only this publishes).
+`release.yml` refuses to publish if the tag doesn't match `__version__`.
 
 ## Design constraints worth knowing before you change things
 
