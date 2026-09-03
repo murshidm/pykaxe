@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The TUI now has a real, app-owned dark theme instead of blending fully
+  into the terminal's own background — a deliberate visual character pass
+  matching the look of Textual's own demo app (`python -m textual`). The
+  palette is adapted from Textual's built-in "dracula" theme
+  (`background`/`panel`/`primary`), registered as a proper
+  `textual.theme.Theme` so built-in widgets pick up matching colors
+  automatically:
+  - The status footer is now Textual's real `Footer` widget instead of a
+    hand-rolled row of buttons — keys and tooltips are read straight from
+    `Pykaxe.BINDINGS`, colored via the registered theme (amber keys on an
+    elevated panel background).
+  - A new `StatsBar` (using Textual's built-in `Digits` widget, the same
+    one the official demo app uses for its stat readouts) shows the
+    discovered tool count in large violet digits while idle; it and the
+    existing status badge are mutually exclusive, matching how the demo's
+    own stat bar only appears on its home screen.
+  - The welcome title and tool banners (already `Rule`-based headings) now
+    use a new violet "brand" color (`PRIMARY`) for the app's own title,
+    kept strictly separate from the amber `ACCENT` used for tool identity
+    so the two never get confused.
+  - The suggestion-list highlight, status badge, and file-picker modal now
+    use a consistent elevated `PANEL` tone instead of blending with the
+    base background, giving dropdowns and modals a genuine "on top" feel.
+  - **Minimum Textual version raised to 0.86** (from 0.60) — required for
+    the `Theme`/`App.register_theme` API this depends on.
 - The TUI now gives every feedback message a distinct outcome color instead
   of rendering all of them in the same muted grey: errors (invalid input,
   failed tool start, non-zero exit, resource-limit kills) are red and

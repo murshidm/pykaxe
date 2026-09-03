@@ -22,20 +22,63 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DirectoryTree, Input, OptionList, RichLog, Static
+from textual.theme import Theme
+from textual.widgets import (
+    Digits,
+    DirectoryTree,
+    Footer,
+    Input,
+    Label,
+    OptionList,
+    RichLog,
+    Static,
+)
 from textual.widgets.option_list import Option
 from rich.markup import escape as escape_markup
 from rich.rule import Rule
 from rich.text import Text
 
+# Palette: previously BG was `ansi_default` (transparent to whatever
+# terminal theme the user had) — a deliberate choice kept through several
+# rounds of this design pass. This round replaces that with a real,
+# app-owned dark background plus an elevated PANEL tone, matching how
+# Textual's own demo app (`python -m textual`, `textual/demo/home.py`)
+# looks: a solid themed surface, not a borrowed one. Values are adapted
+# from Textual's built-in "dracula" theme (`textual/theme.py`) rather than
+# picked freehand, for the same reason ACCENT_TINT below is copied from
+# Textual's actual block-cursor convention instead of guessed.
 FG = "#f2f2f2"
 MUTED = "#8a8a8a"
-BORDER = "#3a3a3a"
-BG = "ansi_default"
+BORDER = "#44475a"
+BG = "#282a36"
+PANEL = "#313442"
+PRIMARY = "#bd93f9"  # new: app/brand identity (headings), distinct from
+# ACCENT, which stays reserved for "this is a tool" and nothing else
 SUCCESS = "#7ee787"
 ACCENT = "#f2c94c"
 ERROR = "#e5534b"
 WARNING = "#e5c07b"
+
+PYKAXE_THEME = Theme(
+    name="pykaxe",
+    primary=PRIMARY,
+    accent=ACCENT,
+    foreground=FG,
+    background=BG,
+    surface=PANEL,
+    panel=PANEL,
+    success=SUCCESS,
+    warning=WARNING,
+    error=ERROR,
+    dark=True,
+)
+"""Registered in Pykaxe.__init__ so built-in widgets we adopt (Footer,
+Digits) pick up the same palette automatically via their own `$primary` /
+`$foreground` / etc. CSS variables, instead of needing hand-written CSS
+overrides for every one of them. Widgets pykaxe defines itself (RichLog
+content, #badge, StatsBar, #suggestions, the file picker) keep using the
+plain constants above directly, same as before — the theme only has to
+cover the surface built-in widgets already reference internally."""
 
 
 def _alpha(hex_color: str, alpha: float) -> str:
@@ -50,11 +93,8 @@ def _alpha(hex_color: str, alpha: float) -> str:
 # primary color at ~30% alpha rather than a solid block (see
 # block-cursor-blurred-background in textual/design.py) — ACCENT_TINT
 # mirrors that same restraint for our suggestion list, using our own
-# tool-identity color instead of a generic "primary". ACCENT_WASH is a
-# lighter version of the same idea for the status badge: enough of a
-# color cue to read as "this row is state," short of a filled block.
+# tool-identity color instead of a generic "primary".
 ACCENT_TINT = _alpha(ACCENT, 0.3)
-ACCENT_WASH = _alpha(ACCENT, 0.12)
 
 # Protection limits for running tools. Tool scripts are user-authored and
 # untrusted, so every guard here lives on the app side rather than relying
@@ -66,19 +106,6 @@ MAX_TOOL_CPU_SECONDS = 120  # RLIMIT_CPU ceiling; catches tight busy-loops fast
 MAX_TOOL_RUNTIME_SECONDS = 30 * 60  # wall-clock safety net for polling loops
 
 POSIX = sys.platform != "win32"
-
-
-def footer_label(key: str, label: str) -> str:
-    return f"[{FG}]{escape_markup(f'[{key}]')}[/] [{MUTED}]{label}[/]"
-
-
-# Textual's key ids aren't always what should be printed ("escape" instead
-# of "esc") — this is the one allowed display-only override; everything
-# else the footer shows (key and label) is read straight off Pykaxe's own
-# BINDINGS list (see StatusBar) instead of being retyped, so a rebound key
-# or an edited description can't silently drift out of sync with the
-# footer.
-KEY_DISPLAY = {"escape": "esc"}
 
 
 # Semantic output helpers (DESIGN.md §"output semantics"): every pykaxe
@@ -203,28 +230,45 @@ class Shell:
         self.kill_announced: bool = False
 
 
-class StatusBar(Horizontal):
-    """Builds its buttons from the app's own BINDINGS instead of retyping
-    each key/label as a separate literal — see the KEY_DISPLAY note above.
-    Only a curated subset appears here (in this specific order, most
-    urgent first) since ctrl+o/browse is contextual, not a standing
-    shortcut."""
+class StatsBar(Horizontal):
+    """A small stat readout shown only on the idle/welcome state — mirrors
+    Textual's own demo app (`StarCount` in `textual/demo/home.py`), which
+    docks a Digits-based stats row above its home screen and nowhere else.
+    Same idea here: this and `#badge` are mutually exclusive — exactly one
+    "what state is the app in" bar is visible at a time (idle -> StatsBar,
+    tool loaded/running -> badge), toggled together in `update_badge()`.
 
-    FOOTER_ACTIONS = ("interrupt", "copy_output", "scan_tools", "quit")
+    Only one real stat: the discovered tool count. Version already has a
+    place (the welcome heading's subtitle) — repeating it here in a second,
+    louder treatment right next to it would read as a mistake, not
+    intentional emphasis."""
 
-    def __init__(self, bindings: list[Binding]) -> None:
-        super().__init__()
-        self._bindings = {binding.action: binding for binding in bindings}
+    DEFAULT_CSS = f"""
+    StatsBar {{
+        display: none;
+        height: 4;
+        background: {PANEL};
+        padding: 0 2;
+    }}
+    StatsBar > Vertical {{
+        width: auto;
+    }}
+    StatsBar Label {{
+        color: {MUTED};
+    }}
+    StatsBar Digits {{
+        color: {PRIMARY};
+        width: auto;
+    }}
+    """
 
     def compose(self) -> ComposeResult:
-        for action in self.FOOTER_ACTIONS:
-            binding = self._bindings[action]
-            key = KEY_DISPLAY.get(binding.key, binding.key)
-            yield Button(
-                footer_label(key, binding.description.lower()),
-                id=action,
-                classes="footer-btn",
-            )
+        with Vertical():
+            yield Label("Tools")
+            yield Digits("0", id="tool-count")
+
+    def set_tool_count(self, count: int) -> None:
+        self.query_one("#tool-count", Digits).update(str(count))
 
 
 class FilePickerScreen(ModalScreen[Path | None]):
@@ -248,17 +292,17 @@ class FilePickerScreen(ModalScreen[Path | None]):
     #picker {{
         width: 80%;
         height: 80%;
-        background: {BG};
+        background: {PANEL};
         border: round {FG};
     }}
     #picker-title {{
         height: 1;
         padding: 0 1;
-        background: {BG};
+        background: {PANEL};
         color: {MUTED};
     }}
     FilePickerScreen DirectoryTree {{
-        background: {BG};
+        background: {PANEL};
     }}
     """
 
@@ -287,6 +331,12 @@ class FilePickerScreen(ModalScreen[Path | None]):
 
 
 class Pykaxe(App):
+    # pykaxe doesn't design around Textual's generic command palette (theme
+    # switching, its own screenshot action, etc.) — it isn't part of the
+    # tested feature set documented here, so it stays off rather than
+    # exposing an unreviewed surface behind an undocumented ctrl+p.
+    ENABLE_COMMAND_PALETTE = False
+
     CSS = f"""
     Screen {{
         background: {BG};
@@ -294,7 +344,7 @@ class Pykaxe(App):
     #badge {{
         display: none;
         height: 1;
-        background: {ACCENT_WASH};
+        background: {PANEL};
         content-align: left middle;
         padding: 0 1;
     }}
@@ -309,19 +359,6 @@ class Pykaxe(App):
         scrollbar-background-active: {BG};
         scrollbar-color-active: {FG};
     }}
-    Button {{
-        background: {BG};
-        border: solid {BORDER};
-        text-style: none;
-    }}
-    Button:hover {{
-        background: {BG};
-        border: solid {FG};
-        text-style: none;
-    }}
-    Button:focus {{
-        text-style: none;
-    }}
     #bottom {{
         dock: bottom;
         height: auto;
@@ -334,23 +371,11 @@ class Pykaxe(App):
     Input:focus {{
         border: round {FG};
     }}
-    StatusBar {{
-        height: 1;
-        background: {BG};
-        padding: 0 1;
-    }}
-    .footer-btn {{
-        min-width: 0;
-        height: 1;
-        background: {BG};
-        border: none;
-        margin-right: 2;
-    }}
     #suggestions {{
         display: none;
         height: auto;
         max-height: 6;
-        background: {BG};
+        background: {PANEL};
         border: round {BORDER};
         scrollbar-background: transparent;
         scrollbar-color: transparent;
@@ -361,7 +386,7 @@ class Pykaxe(App):
         scrollbar-color-active: {FG};
     }}
     OptionList {{
-        background: {BG};
+        background: {PANEL};
     }}
     OptionList > .option-list--option-highlighted {{
         background: {ACCENT_TINT};
@@ -370,13 +395,28 @@ class Pykaxe(App):
     """
 
     BINDINGS = [
-        Binding("ctrl+c", "quit", "Quit", priority=True),
-        Binding("ctrl+y", "copy_output", "Copy"),
-        Binding("ctrl+s", "scan_tools", "Scan"),
-        Binding("ctrl+o", "browse_file", "Browse file"),
+        Binding("ctrl+c", "quit", "Quit", priority=True, tooltip="Stop any running tool and exit"),
+        Binding("ctrl+y", "copy_output", "Copy", tooltip="Copy the visible output to your clipboard"),
+        Binding("ctrl+s", "scan_tools", "Scan", tooltip="Re-scan the tools directory for new tools"),
+        Binding(
+            "ctrl+o",
+            "browse_file",
+            "Browse file",
+            show=False,  # contextual (only while collecting a Path argument), not a standing shortcut
+            tooltip="Browse for a file",
+        ),
         # priority=True: this must win over whatever widget has focus (e.g.
         # the Input) so a runaway tool can always be killed immediately.
-        Binding("escape", "interrupt", "Interrupt", priority=True),
+        # key_display: Footer would otherwise print the raw key id
+        # ("escape") instead of the short form everyone actually calls it.
+        Binding(
+            "escape",
+            "interrupt",
+            "Interrupt",
+            key_display="esc",
+            priority=True,
+            tooltip="Stop the running tool, or cancel argument entry",
+        ),
     ]
 
     def __init__(self, tools_dir: Path) -> None:
@@ -384,17 +424,21 @@ class Pykaxe(App):
         self.tools_dir = tools_dir
         self.shell = Shell()
         self.tools: dict[str, ModuleType] = {}
+        self.register_theme(PYKAXE_THEME)
+        self.theme = "pykaxe"
 
     def compose(self) -> ComposeResult:
         yield Static("", id="badge")
+        yield StatsBar()
         yield RichLog(markup=True, wrap=True, max_lines=MAX_OUTPUT_LINES)
         with Vertical(id="bottom"):
             yield OptionList(id="suggestions")
             yield Input(placeholder="Type / to load a tool...")
-            yield StatusBar(self.BINDINGS)
+            yield Footer(show_command_palette=False)
 
     def on_mount(self) -> None:
         self.tools = discover_tools(self.tools_dir)
+        self.query_one(StatsBar).set_tool_count(len(self.tools))
         self._show_welcome()
         self.update_badge()
         self.update_input_placeholder()
@@ -406,7 +450,7 @@ class Pykaxe(App):
 
     def _show_welcome(self) -> None:
         title = Text()
-        title.append("pykaxe", style=f"bold {FG}")
+        title.append("pykaxe", style=f"bold {PRIMARY}")
         title.append(f" v{__version__}", style=MUTED)
         self._write_heading(title, f"pykaxe v{__version__}")
         self.write_line("")
@@ -762,18 +806,6 @@ class Pykaxe(App):
         with contextlib.suppress(ProcessLookupError):
             process.kill()
 
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "interrupt":
-            self.action_interrupt()
-        elif event.button.id == "copy_output":
-            self.action_copy_output()
-        elif event.button.id == "scan_tools":
-            self.action_scan_tools()
-        elif event.button.id == "quit":
-            await self.action_quit()
-            return
-        self._focus_input()
-
     def action_copy_output(self) -> None:
         if self._modal_active():
             return
@@ -855,6 +887,7 @@ class Pykaxe(App):
         if self._modal_active():
             return
         self.tools = discover_tools(self.tools_dir)
+        self.query_one(StatsBar).set_tool_count(len(self.tools))
         self.write_line(info(f"scanned {len(self.tools)} tool(s)"))
         self.write_line("")
 
@@ -880,21 +913,29 @@ class Pykaxe(App):
 
 
     def update_badge(self) -> None:
-        """Formerly a solid ACCENT block with dark inverted text — replaced
-        with a translucent wash (ACCENT_WASH, see the token comment above)
-        plus color-coded text, matching how the rest of the app already
+        """Formerly a solid ACCENT block with dark inverted text — now a
+        PANEL-toned status row (elevated surface, same idea as StatsBar)
+        with color-coded text, matching how the rest of the app already
         carries state through color rather than a filled block. Running
         reuses SUCCESS (green already means "this tool is live" for
-        streamed stdout — same meaning here, not a new one)."""
+        streamed stdout — same meaning here, not a new one).
+
+        #badge and StatsBar are mutually exclusive — exactly one "what
+        state is the app in" row is visible at a time: StatsBar while
+        idle, this badge once a tool is loaded/running — so every call
+        here toggles both together rather than just the one being shown."""
         shell = self.shell
         badge = self.query_one("#badge", Static)
+        stats = self.query_one(StatsBar)
         if shell.tool:
             state = f"[{SUCCESS}]• running[/]" if shell.process is not None else f"[{MUTED}]active[/]"
             badge.update(f"{tool_name(shell.tool)} [{MUTED}]·[/] {state}")
             badge.display = True
+            stats.display = False
         else:
             badge.update("")
             badge.display = False
+            stats.display = True
 
 
 def run() -> None:
