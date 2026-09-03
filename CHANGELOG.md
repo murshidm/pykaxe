@@ -30,6 +30,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   assistants to decide where to write tool files, so the stale path could
   cause a tool to be written somewhere pykaxe never scans.
 
+## [0.1.2] - 2026-09-03
+
+### Changed
+
+- Default tools directory moved from `~/.pykaxe/tools` to
+  `~/Documents/pykaxe`, and tools-dir resolution was refactored into
+  `resolve_tools_dir()` (replacing `ensure_tools_dir()`).
+- The app's shutdown message now shows for 1 second instead of 2.
+- Lowercased launcher filenames and references to `pykaxe` for naming
+  consistency with the package/CLI.
+
+### Added
+
+- `FilePickerScreen`: a `ctrl+o` modal for browsing to a file when a tool
+  argument is `Path`-typed, instead of typing the path by hand.
+- Launchers for Windows (`pykaxe.bat`) and macOS (`pykaxe.command`) for
+  non-technical users, running `pipx run pykaxe`.
+
+### Docs
+
+- Revised `README.md` and `SETUP.md` for clarity.
+
+## [0.1.1] - 2026-08-29
+
+### Added
+
+- Restructured into a publishable `pykaxe` package: `src/pykaxe` layout,
+  hatchling build backend, console script entry point, dynamic versioning,
+  and `Makefile`/`scripts/bump_version.py` tooling.
+- AI-assisted tool generation workflow: a configurable, first-run-prompted
+  tools directory (`~/.pykaxe/config.json` at the time), `pykaxe
+  add`/`prompt`/`skill`/`tools-dir` CLI commands, a copy-paste `PROMPT.md`
+  and a Claude Code `SKILL.md` describing the tool contract, and richer
+  argument prompts (choices/default/help) in the TUI.
+- CI and release GitHub Actions: `ci.yml` (ruff + pytest across Python
+  3.10–3.13) and `release.yml` (tag-triggered build + PyPI publish).
+
 ## [0.1.0] - 2026-08-29
 
 ### Added
