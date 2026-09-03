@@ -143,14 +143,23 @@ prompts, streamed subprocess output, error/status lines) goes here via
   scrolling — a scrollbar that's invisible until you reach for it.
 - **Text color semantics inside this pane** (not CSS, but content markup
   applied per-line in Python via the `info/success/warning/error/cancelled/
-  tool_name/user_input` helpers — see "Output semantics" above):
+  tool_name/user_input/prompt` helpers — see "Output semantics" above):
   - `FG` via `user_input()` → the user's own submitted text, echoed back —
     a third voice distinct from pykaxe's `MUTED` chrome and a tool's
     `SUCCESS` stdout. `user_input()` also `escape_markup()`s the value,
     which matters beyond styling: without it, a submitted value containing
     `[` would be parsed as Rich markup instead of shown literally.
-  - `MUTED` via `info()`/`cancelled()` → pykaxe's own neutral chrome:
-    prompts, hints, "cancelled — \<tool\>"
+  - `FG` via `prompt()` (with a `›` lead-in) → the argument prompt itself
+    ("enter text:") — the thing that requires action next, one level above
+    the `MUTED` help line that may follow it. Previously both used `info()`
+    and were visually identical. `prompt_next_arg()` also escapes the
+    prompt text before styling it — a default value that happens to look
+    like markup (e.g. `enter interval [2.0]:`, from the shipped
+    `sci-fi-quote-loop` example) would otherwise have its brackets silently
+    eaten and any word matching a real Rich style name (`[bold]`, `[red]`,
+    etc.) actually applied as styling.
+  - `MUTED` via `info()`/`cancelled()` → pykaxe's own neutral chrome: hints,
+    "cancelled — \<tool\>"
   - `ACCENT` via `tool_name()` → tool names (welcome list, suggestions,
     banners)
   - `SUCCESS` (green) via `success()` → lines streamed live from a running
@@ -299,10 +308,10 @@ within it.
   badge's `#1a1a1a` text and the file picker's unconditional `FG` border.
 - **Change what a message means (info/success/warning/error/cancelled):**
   don't reach for a raw `f"[{COLOR}]...[/]"` string — use the matching
-  helper (`info()`, `success()`, `warning()`, `error()`, `cancelled()`,
-  `tool_name()`, `user_input()`) defined next to `footer_label()` near the
-  top of `app.py`. That's the single place the outcome vocabulary is
-  defined; call sites should never re-decide it.
+  helper (`info()`, `prompt()`, `success()`, `warning()`, `error()`,
+  `cancelled()`, `tool_name()`, `user_input()`) defined next to
+  `footer_label()` near the top of `app.py`. That's the single place the
+  outcome vocabulary is defined; call sites should never re-decide it.
 - **Change a keyboard shortcut's key or footer text:** edit the matching
   `Binding` in `Pykaxe.BINDINGS` — `StatusBar` reads both from there, so
   there's nothing else to update. To change *which* bindings the footer

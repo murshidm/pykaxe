@@ -69,6 +69,15 @@ def info(text: str) -> str:
     return f"[{MUTED}]{text}[/]"
 
 
+def prompt(text: str) -> str:
+    """An argument prompt ("enter text:") — what requires action next, as
+    opposed to the MUTED help line that may follow it. FG + a `›` lead-in
+    keeps it one clear step above `info()` without going all the way to
+    bold, which would get shouty across a tool with several arguments in a
+    row."""
+    return f"[{FG}]› {text}[/]"
+
+
 def success(text: str) -> str:
     return f"[{SUCCESS}]✓ {text}[/]"
 
@@ -560,8 +569,8 @@ class Pykaxe(App):
         if not shell.pending_args:
             return
         action = shell.pending_args[shell.arg_index]
-        prompt = self._arg_prompt_text(action)
-        self.write_line(info(f"{prompt}:"))
+        arg_prompt = escape_markup(self._arg_prompt_text(action))
+        self.write_line(prompt(f"{arg_prompt}:"))
         if action.help:
             self.write_line(info(escape_markup(action.help)))
         self.write_line("")

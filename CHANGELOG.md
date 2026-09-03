@@ -31,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now shown in `FG` instead of the terminal's unstyled default, and is
   markup-escaped — previously a typed value containing `[` could be parsed
   as Rich markup instead of displayed literally.
+- Argument prompts ("enter text:") and the help line that can follow them
+  were previously both `MUTED`, making them hard to visually tell apart.
+  The prompt itself (what requires action next) is now `FG` with a `›`
+  lead-in; the help line stays `MUTED`. The prompt text is also now
+  markup-escaped — a default value that happens to look like markup (e.g.
+  `enter interval [2.0]:`, from the shipped `sci-fi-quote-loop` example)
+  previously had its brackets silently eaten, and a default matching a real
+  Rich style name (`[bold]`, `[red]`, etc.) would have actually been
+  applied as styling instead of shown literally.
 - The welcome screen now shows the running version next to the `pykaxe`
   banner (e.g. `pykaxe v0.1.7`), so it's visible at a glance which release
   you're on.
