@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from pykaxe import config
+from pykaxe import __version__, config
 from pykaxe.app import run as run_tui
 
 REQUIRED_NAMES = ("TOOL_NAME", "TOOL_DESCRIPTION")
@@ -110,6 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="pykaxe",
         description="A terminal UI for discovering and running small Python CLI tools.",
     )
+    parser.add_argument("--version", action="version", version=f"pykaxe {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
     add_parser = subparsers.add_parser("add", help="validate and copy a tool script into your tools folder")

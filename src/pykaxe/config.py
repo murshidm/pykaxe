@@ -6,7 +6,7 @@ from pathlib import Path
 
 HOME = Path.home() / ".pykaxe"
 CONFIG_PATH = HOME / "config.json"
-DEFAULT_TOOLS_DIR = Path.home() / "Documents" / "pykaxe"
+DEFAULT_TOOLS_DIR = Path.home() / "Documents" / "pykaxe-scripts"
 EXAMPLES_DIR = Path(__file__).resolve().parent / "examples"
 
 
@@ -34,22 +34,24 @@ def seed_examples(tools_dir: Path) -> None:
 
 
 def resolve_tools_dir() -> Path:
-    """Resolves the tools directory, defaulting to ~/Documents/pykaxe on
-    first run and persisting the choice so this only happens once."""
+    """Resolves the tools directory, defaulting to ~/Documents/pykaxe-scripts
+    on first run and persisting the choice so this only happens once. The
+    resolved directory is seeded with the example tools whenever it doesn't
+    already exist, whichever of override/saved/default it came from —
+    otherwise a saved config pointing at a not-yet-created directory (e.g.
+    after the tools dir moved, or the folder was deleted) would silently
+    create an empty folder with no examples in it."""
     override = os.environ.get("PYKAXE_TOOLS_DIR")
     if override:
         path = Path(override).expanduser()
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+    else:
+        saved = load_tools_dir()
+        path = saved if saved is not None else DEFAULT_TOOLS_DIR
 
-    saved = load_tools_dir()
-    if saved is not None:
-        saved.mkdir(parents=True, exist_ok=True)
-        return saved
-
-    is_new = not DEFAULT_TOOLS_DIR.exists()
-    DEFAULT_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+    is_new = not path.exists()
+    path.mkdir(parents=True, exist_ok=True)
     if is_new:
-        seed_examples(DEFAULT_TOOLS_DIR)
-        save_tools_dir(DEFAULT_TOOLS_DIR)
-    return DEFAULT_TOOLS_DIR
+        seed_examples(path)
+        if not override:
+            save_tools_dir(path)
+    return path

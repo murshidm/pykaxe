@@ -139,6 +139,10 @@ class FilePickerScreen(ModalScreen[Path | None]):
     which Textual always checks before a pushed screen ever sees the key —
     so escape is handled centrally in Pykaxe.action_interrupt() instead."""
 
+    BINDINGS = [
+        Binding("backspace", "go_up", "Up a directory"),
+    ]
+
     CSS = f"""
     FilePickerScreen {{
         align: center middle;
@@ -166,11 +170,22 @@ class FilePickerScreen(ModalScreen[Path | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="picker"):
-            yield Static("select a file — esc to cancel", id="picker-title")
-            yield DirectoryTree(str(self.start_dir))
+            yield Static(self._title_text(), id="picker-title")
+            yield DirectoryTree(str(self.start_dir), id="picker-tree")
+
+    def _title_text(self) -> str:
+        return f"{self.start_dir} — esc to cancel, backspace to go up"
 
     def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
         self.dismiss(event.path)
+
+    def action_go_up(self) -> None:
+        parent = self.start_dir.parent
+        if parent == self.start_dir:
+            return  # already at the filesystem root
+        self.start_dir = parent
+        self.query_one("#picker-tree", DirectoryTree).path = str(parent)
+        self.query_one("#picker-title", Static).update(self._title_text())
 
 
 class Pykaxe(App):
@@ -486,6 +501,12 @@ class Pykaxe(App):
         has_default = action.default is not None and action.default is not argparse.SUPPRESS
         if not value and has_default:
             value = str(action.default)
+
+        if not value:
+            self.write_line(f"[{MUTED}]{action.dest} is required — enter a value[/]")
+            self.write_line("")
+            self.prompt_next_arg()
+            return
 
         if action.choices and value not in [str(c) for c in action.choices]:
             choices = ", ".join(str(c) for c in action.choices)
