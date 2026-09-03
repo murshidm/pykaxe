@@ -7,84 +7,87 @@ when changing the look of the app. If you edit `Pykaxe.CSS` or `compose()`,
 update this file in the same change.
 
 Most layout/style lives in the `CSS` class variable on `Pykaxe` (and on
-`FilePickerScreen`/`StatsBar`) in `app.py` — there is no external `.tcss`
-file — but as of this round the app also registers a real Textual `Theme`
-(`PYKAXE_THEME`, see "Theming" below) so built-in widgets it adopts
-(`Footer`, `Digits`) pick up matching colors automatically.
+`FilePickerScreen`) in `app.py` — there is no external `.tcss` file — but
+the app also registers a real Textual `Theme` (`PYKAXE_THEME`, see
+"Theming" below) so the one built-in widget it adopts (`Footer`) picks up
+matching colors automatically.
 
 ## Design philosophy
 
-- **A real app-owned theme, not a borrowed terminal background.** Earlier
-  rounds of this design kept `BG = "ansi_default"` deliberately, so the app
-  blended into whatever terminal theme the user already had. This round
-  reverses that on purpose, at the user's explicit request for more visual
-  "character" — matching the look of Textual's own demo app
-  (`python -m textual`, `textual/demo/home.py`): a real, consistent dark
-  background (`BG`) and an elevated surface (`PANEL`) the app owns
-  outright. If a future change wants to go back to terminal-transparency,
-  that's a deliberate reversal of *this* note, not an oversight to "fix."
-- **Palette adapted from Textual's own "dracula" theme**
-  (`textual/theme.py`, `BUILTIN_THEMES["dracula"]`), not picked freehand —
-  `BG`, `PANEL`, `PRIMARY`, and `BORDER` all trace back to that theme's
-  `background`/`panel`/`primary`/(current-line) values. `ACCENT` (amber,
-  tool identity) and `SUCCESS`/`ERROR`/`WARNING` are pykaxe's own, kept
-  from earlier rounds rather than replaced, since they already carry
-  established, tested meaning.
-- **Borders are still a primary structural device.** `round` borders dim to
-  a near-invisible tone at rest and brighten only when focused/active —
-  unchanged from earlier rounds, just recolored to sit against the new
-  background instead of `ansi_default`.
+- **Borrow the terminal, don't repaint it.** `BG = "ansi_default"` — the
+  app has no background color of its own; every background blends into
+  whatever terminal theme the user already has. An earlier draft of this
+  round tried a real app-owned dark background plus a separate elevated
+  `PANEL` tone (matching Textual's own demo app's look); that was reverted
+  at the user's explicit request for exactly one background, transparent
+  where possible, so borders and `Rule` dividers — the app's actual
+  structural language — read clearly against *any* terminal, and don't
+  have to compete with filled color blocks.
+- **Borders are a primary structural device.** `round` borders dim to a
+  near-invisible neutral grey at rest and brighten only when
+  focused/active. `BORDER` is a plain, hue-neutral grey specifically so it
+  reads clearly regardless of what background color is actually behind it
+  (a terminal can be anything from pure black to solarized to a pastel
+  theme) — it doesn't try to color-match a fixed background, because there
+  isn't one.
 - **Two accent colors for content, plus one for brand.** Amber (`ACCENT`)
   always means "this identifies a tool." Green (`SUCCESS`) always means
   "this is output the running subprocess produced, or a successful
-  completion." `PRIMARY` (violet) is new this round and means neither of
-  those — it's pykaxe's own brand/heading color (the welcome title, the
-  `Digits` stat), kept strictly separate so it never gets mistaken for tool
-  identity or a success signal.
+  completion." `PRIMARY` (violet) is pykaxe's own brand/heading color (the
+  welcome title), kept strictly separate so it never gets mistaken for
+  tool identity or a success signal. `PRIMARY`/`ACCENT`/`SUCCESS`/`ERROR`/
+  `WARNING` are foreground/text colors, not backgrounds — terminal
+  transparency never applied to them, and dropping the app-owned
+  background didn't touch any of them.
 - **Outcomes have their own vocabulary, separate from tool identity.**
   `ERROR` (red) and `WARNING` (amber-yellow) exist specifically so a failed
   action, an invalid input, or a caution never has to borrow `MUTED` (which
   would make it look like neutral status) or `ACCENT` (which would make it
   look like a tool name). See "Output semantics" below.
 - **Chrome disappears when idle, or when not relevant to the current
-  state.** The suggestions dropdown and scrollbars default to `display:
-  none` / transparent and only appear when they have something to show.
-  `#badge` and `StatsBar` are *mutually exclusive* — exactly one "what
-  state is the app in" row is visible at a time (idle → `StatsBar`, tool
-  loaded/running → `#badge`), not both, and never neither once a tool
-  exists to talk about.
+  state.** `#badge`, the suggestions dropdown, and scrollbars all default
+  to `display: none` / transparent and only appear when they have
+  something to show. There is no persistent "header" chrome shown while
+  idle — an earlier draft tried a `Digits`-based tool-count stat bar there
+  (see CHANGELOG); removed at the user's request as unnecessary.
 - **Tints over blocks for "this row is selected/active."** Confirmed
   against Textual's own installed source (`textual/design.py`): its
   built-in themes highlight an unfocused list cursor with the primary
   color at `with_alpha(0.3)` — a translucent tint — not a solid fill.
   `#suggestions`'s highlighted row follows the same restraint via
-  `ACCENT_TINT`.
+  `ACCENT_TINT`. `#badge` follows the same "no filled block" principle,
+  just taken further: flat colored text on the same background as
+  everything else, not even a tint — see "Badge" below for why.
 
 ## Theming: a registered Textual `Theme`
 
 `PYKAXE_THEME` (a `textual.theme.Theme`) is registered in
 `Pykaxe.__init__()` and applied via `self.theme = "pykaxe"`. Its fields
-mirror the plain Python color constants exactly (`primary=PRIMARY`,
-`background=BG`, `panel=PANEL`, `surface=PANEL`, `accent=ACCENT`,
-`success=SUCCESS`, `warning=WARNING`, `error=ERROR`, `foreground=FG`).
+mirror the plain Python color constants (`primary=PRIMARY`,
+`accent=ACCENT`, `foreground=FG`, `success=SUCCESS`, `warning=WARNING`,
+`error=ERROR`), and `background`/`surface`/`panel` are all set to `BG`
+(`"ansi_default"`) — one background concept everywhere, confirmed via
+`run_test()` that Textual accepts `"ansi_default"` as a `Theme` background
+value without error (it's handled as a special ANSI-passthrough marker,
+not literal black).
 
-This exists for one reason: built-in widgets pykaxe adopts without writing
-their CSS from scratch — `Footer`, `Digits` — reference Textual's own `$primary`
-/ `$foreground` / `$footer-key-foreground` etc. variables internally. Without
-a matching registered theme they'd render in Textual's *default* palette
-(blue-based `textual-dark`), clashing with everything pykaxe draws itself.
-Registering the theme once means `Footer`'s key labels come out amber
-(`$footer-key-foreground` defaults to `$accent`, which is set to `ACCENT`)
-with a `PANEL` background — verified in `run_test()`, not just assumed —
-without a single line of custom Footer CSS.
+This exists for one reason: `Footer`, the one built-in widget pykaxe
+adopts without writing its CSS from scratch, references Textual's own
+`$primary` / `$foreground` / `$footer-key-foreground` etc. variables
+internally. Without a matching registered theme it would render in
+Textual's *default* palette (blue-based `textual-dark`), clashing with
+everything pykaxe draws itself. Registering the theme once means
+`Footer`'s key labels come out amber (`$footer-key-foreground` defaults to
+`$accent`, which is set to `ACCENT`) — verified in `run_test()`, not just
+assumed — without a single line of custom Footer CSS.
 
-Widgets pykaxe fully owns (`RichLog` content, `#badge`, `StatsBar`,
-`#suggestions`, the file picker) keep using the plain Python constants
-directly in an f-string `CSS`/`DEFAULT_CSS`, exactly as before — the theme
-only needs to cover the surface built-in widgets already reference. Rich
-markup strings (everything written into `RichLog`) *cannot* reference
-Textual's `$variable` syntax at all — that's DOM CSS only — so those call
-sites will always need the literal hex constants regardless of theming.
+Widgets pykaxe fully owns (`RichLog` content, `#badge`, `#suggestions`, the
+file picker) keep using the plain Python constants directly in an
+f-string `CSS`, exactly as before — the theme only needs to cover the
+surface `Footer` already references. Rich markup strings (everything
+written into `RichLog`) *cannot* reference Textual's `$variable` syntax at
+all — that's DOM CSS only — so those call sites will always need the
+literal hex constants regardless of theming.
 
 `ENABLE_COMMAND_PALETTE = False` on `Pykaxe`: Textual's generic command
 palette (theme switching, its own screenshot action, etc.) isn't part of
@@ -100,10 +103,9 @@ Defined as module-level constants near the top of `app.py`.
 | --- | --- | --- | --- |
 | `FG` | `#f2f2f2` | primary/focused | body text, focused input border |
 | `MUTED` | `#8a8a8a` | secondary/inactive/neutral status | help text, prompts, hint lines, neutral info messages |
-| `BORDER` | `#44475a` | resting structure | unfocused borders on RichLog/Input/suggestions, `Rule` heading lines |
-| `BG` | `#282a36` | base app background | Screen, RichLog, Input, `#bottom` |
-| `PANEL` | `#313442` | elevated surface | `#badge`, `StatsBar`, `#suggestions`, file picker modal |
-| `PRIMARY` | `#bd93f9` (violet) | app/brand identity, headings | welcome title (`_write_heading`), `StatsBar`'s `Digits` |
+| `BORDER` | `#3a3a3a` | resting structure | unfocused borders on RichLog/Input/suggestions, `Rule` heading lines |
+| `BG` | `ansi_default` | the one background, everywhere | Screen, RichLog, Input, `#bottom`, `#badge`, `#suggestions`, file picker |
+| `PRIMARY` | `#bd93f9` (violet) | app/brand identity, headings | welcome title (`_write_heading`) |
 | `ACCENT` | `#f2c94c` (amber) | tool identity | `/toolname` in welcome list & suggestions, badge tool name, tool banner title |
 | `SUCCESS` | `#7ee787` (green) | live subprocess output / successful outcome | every line streamed from a running tool's stdout, `✓ <tool> finished`, `✓ copied — N lines`, badge "• running" |
 | `ERROR` | `#e5534b` (red) | failed action / invalid input | `× no such tool`, `× <field> is required`, `× <tool> failed — exit N`, `× <tool> killed — ...` |
@@ -124,9 +126,9 @@ Textual CSS has no `color 30%` shorthand — alpha has to be baked into an
 
 Still `ACCENT` at heart — this doesn't add a new color, just a restrained
 way of applying the existing one to a whole row instead of only to text.
-(An earlier version of this round also had `ACCENT_WASH`, a lighter tint
-for `#badge` — removed when the badge moved to a solid `PANEL` background
-instead; see "Badge" below for why.)
+Alpha-blending is composited against whatever's actually behind it at
+paint time, so this still works correctly now that the background it's
+blended over is `ansi_default` rather than a fixed hex.
 
 ### Headings: `Rule`, not a plain text line
 
@@ -139,7 +141,9 @@ carries the actual color: bold `PRIMARY` for "pykaxe" (brand identity),
 bold `ACCENT` for a tool name (tool identity — deliberately a different
 color from the app's own brand, so a tool banner never reads as "part of
 pykaxe's own chrome"). Used sparingly, at genuine context transitions only,
-so it reads as a signal rather than wallpaper.
+so it reads as a signal rather than wallpaper. This is the *only* heading
+mechanism in the app — see "Badge" below for why `#badge` was deliberately
+kept from becoming a second, competing one.
 
 `RichLog.write()` accepts any Rich renderable, not only markup strings —
 `_write_heading` is the one place in the app that uses that directly
@@ -195,7 +199,7 @@ kill site actually set it.
 
 ```
 ┌──────────────────────────────────────────────┐
-│ #badge / StatsBar   (mutually exclusive)      │  ← 1-4 rows, exactly one visible
+│ #badge            "toolname · active"         │  ← 1 row, hidden unless a tool is loaded
 ├──────────────────────────────────────────────┤
 │                                                │
 │ RichLog           scrolling output/log        │  ← fills all remaining vertical space
@@ -212,44 +216,35 @@ height: auto` — pinned to the bottom edge, only as tall as its (variable)
 contents. `Footer` docks itself independently (it has its own `dock:
 bottom` in its `DEFAULT_CSS`), so it isn't nested inside `#bottom`.
 `RichLog` has no explicit height, so it absorbs whatever space is left.
+There is no persistent widget shown while idle — the top slot is simply
+empty (`display: none`) until a tool is loaded.
 
-### 1. Badge (`#badge`) / StatsBar — the "header," state-dependent
+### 1. Badge (`#badge`) — the "header," when a tool is loaded
 
-There is no `Header` widget. Two `Static`/`Widget` rows share the same top
-slot, toggled together (never both, never neither) in `update_badge()`:
+There is no `Header` widget; this `Static` at the very top is the closest
+thing to one, and it is off by default.
 
-**`StatsBar` — idle state (no tool loaded).** Modeled directly on
-Textual's own demo app (`StarCount` in `textual/demo/home.py`), which docks
-a `Digits`-based stat row above its home screen and nowhere else:
-
-- 4 rows tall, `PANEL` background, one stat: **Tools** — the discovered
-  tool count, as a `Digits` widget colored `PRIMARY`. Updated in
-  `on_mount()` and again in `action_scan_tools()`.
-- Deliberately *one* stat, not two. Version already has a place — the
-  welcome heading's `MUTED` subtitle — so repeating it here in a much
-  louder `Digits` treatment right next to it would read as a mistake
-  rather than intentional emphasis. If a second real, dynamic stat becomes
-  meaningful later, this is where it goes; don't add a stat for the sake
-  of matching the reference layout.
-
-**`#badge` — a tool is loaded/running.**
-
-- Reads `<tool> · active` or `<tool> · • running`.
-- `PANEL` background (elevated surface, same as `StatsBar` — both are
-  "status row" contexts and share the same elevation language), 1 row
-  tall, `0 1` padding, no forced text-style. Text color carries the
-  state: tool name via `tool_name()` (bold `ACCENT`), state word `MUTED`
-  for "active" or `SUCCESS` with a `•` for "running" — reusing `SUCCESS`
-  deliberately, since green already means "this tool is live" for streamed
-  stdout elsewhere; this is the same meaning applied to a status word, not
-  a new one.
-  - History: this was originally a solid `ACCENT` block with hardcoded
-    dark inverted text (read as a heavy, dated "banner"), then briefly a
-    translucent `ACCENT_WASH` tint (see the alpha-token note above), before
-    settling on the current `PANEL` solid fill — closer to how Textual's
-    own `StarCount` uses `background: $boost` (a neutral elevation, not a
-    colored wash) for what is structurally the same kind of "persistent
-    status row."
+- **Hidden state:** `display: none`, zero height — most of the time this
+  row doesn't exist at all.
+- **Shown state:** appears the instant a tool is loaded (`update_badge()`),
+  reads `<tool> · active` or `<tool> · • running`.
+- **Style:** flat text on `BG` — no filled block, no border, no distinct
+  background at all. Text color carries the state: tool name via
+  `tool_name()` (bold `ACCENT`), state word `MUTED` for "active" or
+  `SUCCESS` with a `•` for "running" — reusing `SUCCESS` deliberately,
+  since green already means "this tool is live" for streamed stdout
+  elsewhere; this is the same meaning applied to a status word, not a new
+  one.
+  - **Why not a filled block or an elevated panel:** earlier drafts tried
+    a solid `ACCENT` block with hardcoded dark inverted text, then a
+    translucent tint, then a solid elevated `PANEL` fill — all read as a
+    second, competing "heading," visually fighting the `Rule`-based
+    heading that also appears (in `RichLog`) the moment a tool loads.
+    Consistency won: there's exactly one heading *mechanism* in this app
+    (`_write_heading`'s `Rule`), and `#badge` is a plain status line, not
+    a rival banner. Removing its background also directly serves "one
+    background color, borders stand out" — a distinct badge background
+    was itself one of the "many colors" being consolidated away.
   - **A `height: 1` widget has no room for a border.** An earlier draft
     added `border-bottom: solid {BORDER}` for a subtle separator from
     `RichLog` below — that silently collapsed the badge's own content area
@@ -267,7 +262,7 @@ The main output pane — every printed line (welcome text, tool banners,
 prompts, streamed subprocess output, error/status lines) goes here via
 `write_line()` / `write_line_to()` / `_write_heading()`.
 
-- **Background:** `BG`.
+- **Background:** `BG` (`ansi_default`).
 - **Border:** `round {BORDER}` always — this widget does not brighten on
   focus (it's rarely focused directly; the Input is), so its border stays
   the dim resting tone permanently.
@@ -320,11 +315,9 @@ sitting directly above the `Input`, inside `#bottom`.
 - **Sizing:** `max-height: 6` — caps to 6 visible rows regardless of match
   count; scrolls internally rather than growing to push the Input off
   screen.
-- **Background:** `PANEL` — an elevated popup surface, distinct from the
-  `BG` content plane behind it (previously this matched `BG` exactly, back
-  when the whole app shared one transparent-to-terminal background; now
-  that the app owns real tonal layers, the dropdown gets to look
-  genuinely "on top" rather than blending in).
+- **Background:** `BG`, same as everything else — it is not a separate
+  "popup surface," it reads as part of the same panel, just an extra strip
+  above the Input.
 - **Highlight:** the focused/hovered option gets `background:
   {ACCENT_TINT}` — a translucent 30%-alpha wash of the tool-identity
   color, not a solid fill. Previously this was a flat `{BORDER}` grey —
@@ -360,37 +353,29 @@ The single text-entry widget; every user action funnels through it (see
 
 ### 5. Footer (Textual's built-in `Footer` widget)
 
-`yield Footer(show_command_palette=False)` — as of this round, no longer a
-hand-rolled `StatusBar`/`Button` row. Textual's real `Footer` reads
-key/description straight from `Pykaxe.BINDINGS`, so there's exactly one
-place each shortcut's key and label are written; the earlier
-`footer_label()`/`KEY_DISPLAY` scaffolding this replaced existed
-specifically to work around not having this.
+`yield Footer(show_command_palette=False)` — not a hand-rolled
+`StatusBar`/`Button` row. Textual's real `Footer` reads key/description
+straight from `Pykaxe.BINDINGS`, so there's exactly one place each
+shortcut's key and label are written.
 
 - **Height:** `1` (`Footer`'s own `DEFAULT_CSS` — unconditional, not
-  `auto`), same footprint as the `StatusBar` it replaced. No layout
-  dimension changed.
+  `auto`).
 - **Which bindings show:** every `Binding` with `show=True` (the default)
   appears; `ctrl+o`/`browse_file` is explicitly `show=False` since it's
   contextual (only relevant while collecting a `Path` argument), not a
-  standing shortcut — same curation the old `StatusBar.FOOTER_ACTIONS`
-  did, now expressed on the `Binding` itself instead of a separate list.
+  standing shortcut.
 - **Key display:** `Binding("escape", ..., key_display="esc", ...)` — the
-  one allowed display-only override, using Textual's own supported
-  `Binding` parameter instead of the app's own `KEY_DISPLAY` dict this
-  replaced.
+  one allowed display-only override.
 - **Colors:** entirely from `PYKAXE_THEME` (see "Theming" above) — key
-  labels render bold `ACCENT` on `PANEL`, description text `FG`. No
-  Footer-specific CSS is written in `Pykaxe.CSS`; changing the theme's
-  `accent`/`panel`/`foreground` moves the footer automatically.
-- **Tooltips:** every `Binding` has a `tooltip=` — free with `Footer`,
-  something the old `StatusBar` had no equivalent for.
+  labels render bold `ACCENT`, description text `FG`. No Footer-specific
+  CSS is written in `Pykaxe.CSS`; changing the theme's `accent`/
+  `foreground` moves the footer automatically.
+- **Tooltips:** every `Binding` has a `tooltip=`.
 - **Click behavior:** `FooterKey.on_mouse_down` calls
-  `self.app.simulate_key(...)`, running the real keyboard-action pipeline
-  (more correct than the old `on_button_pressed` dispatch it replaced,
-  which has been removed). The existing generic `Pykaxe.on_click` still
-  refocuses the `Input` afterward — verified via `run_test()` that a
-  simulated footer click both fires the action and returns focus.
+  `self.app.simulate_key(...)`, running the real keyboard-action pipeline.
+  The existing generic `Pykaxe.on_click` still refocuses the `Input`
+  afterward — verified via `run_test()` that a simulated footer click both
+  fires the action and returns focus.
 
 ## File browser modal (`FilePickerScreen`)
 
@@ -413,21 +398,20 @@ within it.
 
 - **Screen-level:** `align: center middle` — the panel floats centered over
   the dimmed-by-Textual-default backdrop, rather than filling the screen.
-- **Panel (`#picker`):** `width: 80%; height: 80%`, `background: {PANEL}`
-  (an elevated surface — previously `BG`, back when the whole app shared
-  one background; now the modal gets to look genuinely "above" the main
-  screen the same way `#suggestions` does), `border: round {FG}` —
+- **Panel (`#picker`):** `width: 80%; height: 80%`, `background: {BG}`
+  (same background as everything else — the differentiation from the main
+  screen is the border, not a fill color), `border: round {FG}` —
   **unconditional** bright, unlike every other bordered widget in the app,
   which is conditional on `:focus`, because the modal has no unfocused
   state worth showing.
-- **Title bar (`#picker-title`):** 1 row, `{MUTED}` text on `{PANEL}`,
-  shows the current directory and the two available keys (`esc` cancel,
+- **Title bar (`#picker-title`):** 1 row, `{MUTED}` text on `{BG}`, shows
+  the current directory and the two available keys (`esc` cancel,
   `backspace` up a directory). Updates live as you navigate.
 - **`DirectoryTree`:** stock Textual widget, only re-themed with
-  `background: {PANEL}` to match — no custom row/selection colors are
-  set, so its selection highlight is whatever the registered `PYKAXE_THEME`
+  `background: {BG}` to match — no custom row/selection colors are set, so
+  its selection highlight is whatever the registered `PYKAXE_THEME`
   provides (this is the one widget in the app not fully re-skinned by
-  hand — it inherits from the theme like Footer/Digits do).
+  hand — it inherits from the theme like Footer does).
 - **No escape binding on the screen itself** — `Pykaxe`'s own `escape`
   binding is `priority=True` and wins before the pushed screen ever sees
   the key, so cancel is handled centrally in `Pykaxe.action_interrupt()`
@@ -439,28 +423,28 @@ within it.
 | --- | --- | --- | --- |
 | Input | border `BORDER` | border `FG` | — |
 | RichLog | border `BORDER` | (no change — not typically focused) | — |
-| Footer keys | bg `PANEL`, key `ACCENT` bold, label `FG` | (Textual default) | `$block-hover-background` (Textual default) |
+| Footer keys | key `ACCENT` bold, label `FG` | (Textual default) | `$block-hover-background` (Textual default) |
 | Scrollbars (RichLog/#suggestions) | transparent | — | thumb `MUTED`, track transparent |
 | Scrollbars (actively scrolling) | — | thumb `FG` | — |
-| #suggestions option | bg `PANEL` | highlighted: bg `ACCENT_TINT` (30% alpha), `text-style: none` | same as highlighted |
-| #badge (tool loaded) | hidden | bg `PANEL`, color-coded text, shown | — |
-| StatsBar (idle) | shown | bg `PANEL`, `Digits` in `PRIMARY` | — |
+| #suggestions option | bg `BG` | highlighted: bg `ACCENT_TINT` (30% alpha), `text-style: none` | same as highlighted |
+| #badge | hidden | flat text on `BG`, color-coded, shown | — |
 | File picker border | `FG` always | `FG` always | — |
 
 ## Where to change things
 
 - **Recolor anything:** edit the constants at the top of `app.py` (`FG`,
-  `MUTED`, `BORDER`, `BG`, `PANEL`, `PRIMARY`, `ACCENT`, `SUCCESS`,
-  `ERROR`, `WARNING`, `ACCENT_TINT`) — every rule below references these.
-  If the color also needs to reach a *built-in* widget (Footer, Digits,
-  DirectoryTree), update the matching field on `PYKAXE_THEME` too — the
-  Python constant alone only affects pykaxe's own hand-written CSS/markup,
-  not Textual's `$variable`-driven internals.
+  `MUTED`, `BORDER`, `BG`, `PRIMARY`, `ACCENT`, `SUCCESS`, `ERROR`,
+  `WARNING`, `ACCENT_TINT`) — every rule below references these. If the
+  color also needs to reach `Footer` (the one built-in widget adopted),
+  update the matching field on `PYKAXE_THEME` too — the Python constant
+  alone only affects pykaxe's own hand-written CSS/markup, not Textual's
+  `$variable`-driven internals.
 - **Add a heading:** use `self._write_heading(title, copy_text)` with a
   `Text` built via `.append()` — don't hand-roll another plain markup
-  title line for a new top-level context. Reserve it for genuine context
-  transitions; using it for routine messages would turn a signal into
-  wallpaper.
+  title line for a new top-level context, and don't introduce a second
+  competing heading widget (see "Badge" above for why that was reverted).
+  Reserve it for genuine context transitions; using it for routine
+  messages would turn a signal into wallpaper.
 - **Change what a message means (info/success/warning/error/cancelled):**
   don't reach for a raw `f"[{COLOR}]...[/]"` string — use the matching
   helper (`info()`, `prompt()`, `success()`, `warning()`, `error()`,
@@ -471,14 +455,15 @@ within it.
   footer:** edit the matching `Binding` in `Pykaxe.BINDINGS` directly
   (`key`, `description`, `show`, `key_display`, `tooltip`) — `Footer`
   reads all of it live, nothing else to update.
-- **Add a new stat to StatsBar:** only if it's genuinely dynamic and
-  meaningful (like tool count) — see the "deliberately one stat" note in
-  "Layout sections" above before adding a second `Digits`.
 - **Add/remove a section:** edit `Pykaxe.compose()` (widget tree) and add a
   matching block to `Pykaxe.CSS` (or the widget's own `DEFAULT_CSS`, the
-  pattern `StatsBar`/`FilePickerScreen` use).
+  pattern `FilePickerScreen` uses). Before adding a persistent
+  header/status widget, check whether it's answering a question the user
+  already has another way to answer (placeholder text, the badge, streamed
+  output) — a `Digits`-based tool-count stat bar was tried and removed
+  this round for exactly that reason.
 - **Change what a section shows/when:** the *content* of each widget
-  (badge/StatsBar text, placeholder text, suggestion rows, log lines) is
-  driven from Python methods (`update_badge`, `update_input_placeholder`,
+  (badge text, placeholder text, suggestion rows, log lines) is driven
+  from Python methods (`update_badge`, `update_input_placeholder`,
   `on_input_changed`, `write_line*`), not CSS — check there too if the
   visible *behavior* (not just color) needs to change.

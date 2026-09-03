@@ -20,15 +20,13 @@ except ImportError:  # Windows has no resource module
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.theme import Theme
 from textual.widgets import (
-    Digits,
     DirectoryTree,
     Footer,
     Input,
-    Label,
     OptionList,
     RichLog,
     Static,
@@ -38,22 +36,23 @@ from rich.markup import escape as escape_markup
 from rich.rule import Rule
 from rich.text import Text
 
-# Palette: previously BG was `ansi_default` (transparent to whatever
-# terminal theme the user had) — a deliberate choice kept through several
-# rounds of this design pass. This round replaces that with a real,
-# app-owned dark background plus an elevated PANEL tone, matching how
-# Textual's own demo app (`python -m textual`, `textual/demo/home.py`)
-# looks: a solid themed surface, not a borrowed one. Values are adapted
-# from Textual's built-in "dracula" theme (`textual/theme.py`) rather than
-# picked freehand, for the same reason ACCENT_TINT below is copied from
-# Textual's actual block-cursor convention instead of guessed.
+# Palette: one background, borrowed from the terminal (BG = "ansi_default"),
+# not an app-owned hex fill — an earlier version of this round tried a
+# solid Dracula-style background plus a separate elevated PANEL tone; that
+# added more distinct background colors than the app needed and made the
+# borders/Rule dividers (the app's actual structural language) compete
+# with filled color blocks instead of standing out against a neutral
+# field. BORDER stays a plain neutral grey for the same reason — it needs
+# to read clearly against *any* terminal background, not just one specific
+# hex tone. PRIMARY/ACCENT/SUCCESS/ERROR/WARNING are unaffected; those are
+# foreground/text colors, not backgrounds, and terminal-transparency never
+# applied to them.
 FG = "#f2f2f2"
 MUTED = "#8a8a8a"
-BORDER = "#44475a"
-BG = "#282a36"
-PANEL = "#313442"
-PRIMARY = "#bd93f9"  # new: app/brand identity (headings), distinct from
-# ACCENT, which stays reserved for "this is a tool" and nothing else
+BORDER = "#3a3a3a"
+BG = "ansi_default"
+PRIMARY = "#bd93f9"  # app/brand identity (headings), distinct from ACCENT,
+# which stays reserved for "this is a tool" and nothing else
 SUCCESS = "#7ee787"
 ACCENT = "#f2c94c"
 ERROR = "#e5534b"
@@ -65,20 +64,22 @@ PYKAXE_THEME = Theme(
     accent=ACCENT,
     foreground=FG,
     background=BG,
-    surface=PANEL,
-    panel=PANEL,
+    surface=BG,
+    panel=BG,
     success=SUCCESS,
     warning=WARNING,
     error=ERROR,
     dark=True,
 )
-"""Registered in Pykaxe.__init__ so built-in widgets we adopt (Footer,
-Digits) pick up the same palette automatically via their own `$primary` /
+"""Registered in Pykaxe.__init__ so built-in widgets we adopt (Footer)
+pick up the same palette automatically via their own `$primary` /
 `$foreground` / etc. CSS variables, instead of needing hand-written CSS
-overrides for every one of them. Widgets pykaxe defines itself (RichLog
-content, #badge, StatsBar, #suggestions, the file picker) keep using the
-plain constants above directly, same as before — the theme only has to
-cover the surface built-in widgets already reference internally."""
+overrides for every one of them. background/surface/panel are all BG
+(ansi_default) — confirmed via run_test() that Textual accepts
+"ansi_default" as a Theme background without error, so there's one
+background concept everywhere, not three. Widgets pykaxe defines itself
+(RichLog content, #badge, #suggestions, the file picker) keep using the
+plain constants above directly, same as before."""
 
 
 def _alpha(hex_color: str, alpha: float) -> str:
@@ -230,47 +231,6 @@ class Shell:
         self.kill_announced: bool = False
 
 
-class StatsBar(Horizontal):
-    """A small stat readout shown only on the idle/welcome state — mirrors
-    Textual's own demo app (`StarCount` in `textual/demo/home.py`), which
-    docks a Digits-based stats row above its home screen and nowhere else.
-    Same idea here: this and `#badge` are mutually exclusive — exactly one
-    "what state is the app in" bar is visible at a time (idle -> StatsBar,
-    tool loaded/running -> badge), toggled together in `update_badge()`.
-
-    Only one real stat: the discovered tool count. Version already has a
-    place (the welcome heading's subtitle) — repeating it here in a second,
-    louder treatment right next to it would read as a mistake, not
-    intentional emphasis."""
-
-    DEFAULT_CSS = f"""
-    StatsBar {{
-        display: none;
-        height: 4;
-        background: {PANEL};
-        padding: 0 2;
-    }}
-    StatsBar > Vertical {{
-        width: auto;
-    }}
-    StatsBar Label {{
-        color: {MUTED};
-    }}
-    StatsBar Digits {{
-        color: {PRIMARY};
-        width: auto;
-    }}
-    """
-
-    def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Label("Tools")
-            yield Digits("0", id="tool-count")
-
-    def set_tool_count(self, count: int) -> None:
-        self.query_one("#tool-count", Digits).update(str(count))
-
-
 class FilePickerScreen(ModalScreen[Path | None]):
     """Modal file browser pushed with ctrl+o while pykaxe is prompting for a
     Path-typed argument. Dismisses with the chosen path, or None on
@@ -292,17 +252,17 @@ class FilePickerScreen(ModalScreen[Path | None]):
     #picker {{
         width: 80%;
         height: 80%;
-        background: {PANEL};
+        background: {BG};
         border: round {FG};
     }}
     #picker-title {{
         height: 1;
         padding: 0 1;
-        background: {PANEL};
+        background: {BG};
         color: {MUTED};
     }}
     FilePickerScreen DirectoryTree {{
-        background: {PANEL};
+        background: {BG};
     }}
     """
 
@@ -344,7 +304,7 @@ class Pykaxe(App):
     #badge {{
         display: none;
         height: 1;
-        background: {PANEL};
+        background: {BG};
         content-align: left middle;
         padding: 0 1;
     }}
@@ -375,7 +335,7 @@ class Pykaxe(App):
         display: none;
         height: auto;
         max-height: 6;
-        background: {PANEL};
+        background: {BG};
         border: round {BORDER};
         scrollbar-background: transparent;
         scrollbar-color: transparent;
@@ -386,7 +346,7 @@ class Pykaxe(App):
         scrollbar-color-active: {FG};
     }}
     OptionList {{
-        background: {PANEL};
+        background: {BG};
     }}
     OptionList > .option-list--option-highlighted {{
         background: {ACCENT_TINT};
@@ -429,7 +389,6 @@ class Pykaxe(App):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="badge")
-        yield StatsBar()
         yield RichLog(markup=True, wrap=True, max_lines=MAX_OUTPUT_LINES)
         with Vertical(id="bottom"):
             yield OptionList(id="suggestions")
@@ -438,7 +397,6 @@ class Pykaxe(App):
 
     def on_mount(self) -> None:
         self.tools = discover_tools(self.tools_dir)
-        self.query_one(StatsBar).set_tool_count(len(self.tools))
         self._show_welcome()
         self.update_badge()
         self.update_input_placeholder()
@@ -887,7 +845,6 @@ class Pykaxe(App):
         if self._modal_active():
             return
         self.tools = discover_tools(self.tools_dir)
-        self.query_one(StatsBar).set_tool_count(len(self.tools))
         self.write_line(info(f"scanned {len(self.tools)} tool(s)"))
         self.write_line("")
 
@@ -913,29 +870,22 @@ class Pykaxe(App):
 
 
     def update_badge(self) -> None:
-        """Formerly a solid ACCENT block with dark inverted text — now a
-        PANEL-toned status row (elevated surface, same idea as StatsBar)
-        with color-coded text, matching how the rest of the app already
-        carries state through color rather than a filled block. Running
+        """A quiet, flat status line — no filled block, no border of its
+        own — deliberately consistent with the welcome heading and every
+        other structural element in the app: color-coded text on the same
+        BG as everything else, not a competing colored bar fighting for
+        attention above the RichLog's own Rule-based headings. Running
         reuses SUCCESS (green already means "this tool is live" for
-        streamed stdout — same meaning here, not a new one).
-
-        #badge and StatsBar are mutually exclusive — exactly one "what
-        state is the app in" row is visible at a time: StatsBar while
-        idle, this badge once a tool is loaded/running — so every call
-        here toggles both together rather than just the one being shown."""
+        streamed stdout — same meaning here, not a new one)."""
         shell = self.shell
         badge = self.query_one("#badge", Static)
-        stats = self.query_one(StatsBar)
         if shell.tool:
             state = f"[{SUCCESS}]• running[/]" if shell.process is not None else f"[{MUTED}]active[/]"
             badge.update(f"{tool_name(shell.tool)} [{MUTED}]·[/] {state}")
             badge.display = True
-            stats.display = False
         else:
             badge.update("")
             badge.display = False
-            stats.display = True
 
 
 def run() -> None:

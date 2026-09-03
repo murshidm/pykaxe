@@ -9,31 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The TUI now has a real, app-owned dark theme instead of blending fully
-  into the terminal's own background — a deliberate visual character pass
-  matching the look of Textual's own demo app (`python -m textual`). The
-  palette is adapted from Textual's built-in "dracula" theme
-  (`background`/`panel`/`primary`), registered as a proper
-  `textual.theme.Theme` so built-in widgets pick up matching colors
-  automatically:
-  - The status footer is now Textual's real `Footer` widget instead of a
-    hand-rolled row of buttons — keys and tooltips are read straight from
-    `Pykaxe.BINDINGS`, colored via the registered theme (amber keys on an
-    elevated panel background).
-  - A new `StatsBar` (using Textual's built-in `Digits` widget, the same
-    one the official demo app uses for its stat readouts) shows the
-    discovered tool count in large violet digits while idle; it and the
-    existing status badge are mutually exclusive, matching how the demo's
-    own stat bar only appears on its home screen.
-  - The welcome title and tool banners (already `Rule`-based headings) now
-    use a new violet "brand" color (`PRIMARY`) for the app's own title,
-    kept strictly separate from the amber `ACCENT` used for tool identity
-    so the two never get confused.
-  - The suggestion-list highlight, status badge, and file-picker modal now
-    use a consistent elevated `PANEL` tone instead of blending with the
-    base background, giving dropdowns and modals a genuine "on top" feel.
-  - **Minimum Textual version raised to 0.86** (from 0.60) — required for
-    the `Theme`/`App.register_theme` API this depends on.
+- The TUI registers a proper `textual.theme.Theme` (still `BG =
+  "ansi_default"` — every background still blends into the user's own
+  terminal, unchanged) so the status footer, now Textual's real `Footer`
+  widget instead of a hand-rolled row of buttons, picks up matching colors
+  automatically: amber keys, read straight from `Pykaxe.BINDINGS` (key,
+  tooltip, and whether it shows all live on the `Binding` itself — no more
+  separate hardcoded footer strings to keep in sync). A new violet `PRIMARY`
+  color is the app's own brand/heading color (the welcome title), kept
+  strictly separate from the amber `ACCENT` used for tool identity.
+  **Minimum Textual version raised to 0.86** (from 0.60) — required for the
+  `Theme`/`App.register_theme` API this depends on.
 - The TUI now gives every feedback message a distinct outcome color instead
   of rendering all of them in the same muted grey: errors (invalid input,
   failed tool start, non-zero exit, resource-limit kills) are red and
@@ -46,12 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`ERROR`, `WARNING`) were added, with all feedback strings routed through
   new `info()/success()/warning()/error()/cancelled()/tool_name()` helpers
   in `app.py` rather than ad-hoc inline markup.
-- The footer's four buttons (`[esc] interrupt`, `[ctrl+y] copy`, etc.) are
-  now built directly from `Pykaxe.BINDINGS` instead of hardcoding their own
-  key/label strings — previously the footer's "interrupt" label and the
-  `Interrupt` binding description could drift out of sync since they were
-  two separate literals; there is now exactly one place each shortcut's key
-  and text are written.
 - User input echoed back into the log (e.g. an argument value you typed) is
   now shown in `FG` instead of the terminal's unstyled default, and is
   markup-escaped — previously a typed value containing `[` could be parsed
@@ -71,18 +51,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adding a box, panel, or any new chrome. `ctrl+y` copy still gets a plain
   equivalent (e.g. `pykaxe v0.1.10`, `word-count — Count the number of
   words in text.`), it just doesn't reproduce the decorative dashes.
-- The suggestion list's highlighted row and the status badge no longer use
-  solid color fills. The suggestion highlight was a flat, low-contrast
-  dark grey (`BORDER`) — easy to miss and visually unrelated to what's
-  being selected; it's now a translucent 30%-alpha wash of the
-  tool-identity amber, matching the same restraint Textual's own built-in
-  themes use for an unfocused list cursor (`block-cursor-blurred-
-  background`, confirmed in Textual's installed source). The badge was a
-  solid amber block with hardcoded dark inverted text; it's now a
-  translucent 12%-alpha wash with color-coded text (amber tool name, grey
-  "active" or green "• running") — reads as a status line instead of a
-  banner, and "running" reuses the same green that already means "this
-  tool is live" for streamed output elsewhere, not a new meaning.
+- The suggestion list's highlighted row no longer uses a solid color fill —
+  it was a flat, low-contrast dark grey (`BORDER`), easy to miss and
+  visually unrelated to what's being selected. It's now a translucent
+  30%-alpha wash of the tool-identity amber, matching the same restraint
+  Textual's own built-in themes use for an unfocused list cursor
+  (`block-cursor-blurred-background`, confirmed in Textual's installed
+  source).
+- The status badge (shown while a tool is loaded/running) was a solid
+  amber block with hardcoded dark inverted text; it's now flat color-coded
+  text on the same background as everything else (amber tool name, grey
+  "active" or green "• running" — "running" reuses the same green that
+  already means "this tool is live" for streamed output elsewhere, not a
+  new meaning). Several intermediate treatments (a translucent tint, then
+  a solid elevated panel fill) were tried and reverted during this round —
+  each one read as a second heading competing with the `Rule`-based one
+  that already appears in the log the moment a tool loads. A `Digits`-based
+  tool-count stat bar, shown while idle, was also tried and removed as
+  unnecessary.
 - The welcome screen now shows the running version next to the `pykaxe`
   banner (e.g. `pykaxe v0.1.7`), so it's visible at a glance which release
   you're on.
