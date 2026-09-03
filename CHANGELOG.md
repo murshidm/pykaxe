@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A small "pykaxe" label in the bottom-right corner of the footer, muted
+  and non-interactive. It sits beside the `Footer` widget in a shared
+  1-row container rather than overlapping it, and hides itself below
+  `FOOTER_LABEL_MIN_WIDTH` (70 columns) so it can never clip over or block
+  a real keyboard shortcut on a narrow terminal.
+
 ### Changed
 
 - The TUI registers a proper `textual.theme.Theme` (still `BG =

@@ -20,7 +20,7 @@ except ImportError:  # Windows has no resource module
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.theme import Theme
 from textual.widgets import (
@@ -105,6 +105,13 @@ MAX_OUTPUT_BYTES = 4 * 1024 * 1024  # auto-kill a tool that floods stdout/stderr
 MAX_TOOL_MEMORY_BYTES = 256 * 1024 * 1024  # RLIMIT_AS ceiling for a tool process
 MAX_TOOL_CPU_SECONDS = 120  # RLIMIT_CPU ceiling; catches tight busy-loops fast
 MAX_TOOL_RUNTIME_SECONDS = 30 * 60  # wall-clock safety net for polling loops
+
+# Below this terminal width, the right-docked "pykaxe" corner label (see
+# #app-label CSS / Pykaxe._update_app_label) would start to visually
+# collide with Footer's own left-packed keybinding list instead of
+# sharing the row cleanly — measured empirically via run_test() at
+# several widths against the current 4-binding footer.
+FOOTER_LABEL_MIN_WIDTH = 70
 
 POSIX = sys.platform != "win32"
 
@@ -317,6 +324,17 @@ class Pykaxe(App):
         height: auto;
         background: {BG};
     }}
+    #footer-row {{
+        height: 1;
+        background: {BG};
+    }}
+    #app-label {{
+        dock: right;
+        width: auto;
+        color: {MUTED};
+        background: {BG};
+        padding: 0 1;
+    }}
     Input {{
         background: {BG};
         border: round {BORDER};
@@ -385,13 +403,32 @@ class Pykaxe(App):
         with Vertical(id="bottom"):
             yield OptionList(id="suggestions")
             yield Input(placeholder="Type / to load a tool...")
-            yield Footer(show_command_palette=False)
+            with Horizontal(id="footer-row"):
+                yield Footer(show_command_palette=False)
+                yield Static("pykaxe", id="app-label")
 
     def on_mount(self) -> None:
         self.tools = discover_tools(self.tools_dir)
         self._show_welcome()
         self.update_input_placeholder()
         self._focus_input()
+        self._update_app_label()
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._update_app_label(event.size.width)
+
+    def _update_app_label(self, width: int | None = None) -> None:
+        """The small "pykaxe" corner label docks to the right of Footer's
+        own row (see #app-label CSS) rather than overlaying it, so it never
+        blocks a footer key click — but Footer's keys are left-packed and
+        the label is right-docked, so on a narrow enough terminal the two
+        would visually collide instead of gracefully sharing the row.
+        FOOTER_LABEL_MIN_WIDTH is a conservative measured threshold (the
+        real footer's 4 keys end around column 42 at full width; overlap
+        was observed starting around column 45-50 in run_test() at
+        various sizes) — below it, hide the label rather than let it
+        clip/cover a real shortcut."""
+        self.query_one("#app-label", Static).display = (width or self.size.width) >= FOOTER_LABEL_MIN_WIDTH
 
     def _clear_screen(self) -> None:
         self.shell.lines.clear()

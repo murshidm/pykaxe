@@ -211,17 +211,19 @@ kill site actually set it.
 ├──────────────────────────────────────────────┤
 │ #suggestions       (tool picker popup)         │  ← hidden unless typing "/..."
 │ Input              "Type / to load a tool..."  │  ← always visible, single entry point
-│ Footer             [ctrl+c] Quit  [ctrl+y] Copy ... │ ← 1 row, docked bottom
+│ #footer-row  Footer [ctrl+c] Quit ...   pykaxe │ ← 1 row; Footer + #app-label side by side
 └──────────────────────────────────────────────┘
 ```
 
-`#bottom` (a `Vertical`) wraps suggestions + Input and is `dock: bottom;
-height: auto` — pinned to the bottom edge, only as tall as its (variable)
-contents. `Footer` docks itself independently (it has its own `dock:
-bottom` in its `DEFAULT_CSS`), so it isn't nested inside `#bottom`.
-`RichLog` has no explicit height, so it absorbs whatever space is left —
-including the full height of the screen when idle, since there is no
-persistent header widget above it anymore.
+`#bottom` (a `Vertical`) wraps suggestions + Input + `#footer-row` and is
+`dock: bottom; height: auto` — pinned to the bottom edge, only as tall as
+its (variable) contents. `#footer-row` (a `Horizontal`, `height: 1`) is
+the last child, holding `Footer` and `#app-label` side by side — see
+"Footer" below for why they're siblings in a small container rather than
+`#app-label` being positioned independently. `RichLog` has no explicit
+height, so it absorbs whatever space is left — including the full height
+of the screen when idle, since there is no persistent header widget above
+it anymore.
 
 ### 1. Content section (`RichLog`)
 
@@ -343,6 +345,43 @@ shortcut's key and label are written.
   afterward — verified via `run_test()` that a simulated footer click both
   fires the action and returns focus.
 
+**`#app-label`: a small "pykaxe" corner label.** `Footer` is wrapped in a
+`Horizontal(id="footer-row")` alongside a `Static("pykaxe", id="app-label")`
+— not a Footer feature, a sibling. `#app-label` uses `dock: right` *within
+that Horizontal* (not the whole Screen); combined with `Footer`'s own
+`dock: bottom` inside the same 1-row container, both resolve correctly to
+the same row without an overlay layer. This specific structure was chosen
+after testing two other approaches that didn't work:
+
+- A `dock: right` sibling of `Footer` at the *Screen* level defaults to the
+  top of the screen (`y=0`), not the footer row, since dock direction only
+  fixes one axis — confirmed via `run_test()`.
+- A same-layer transparent overlay spanning the full row width (so its
+  child could be right-aligned via `align: right middle`) visually looked
+  correct, but its full-width bounding box **intercepted clicks meant for
+  the actual footer keys underneath** — confirmed via `run_test()` with a
+  simulated click that silently failed to fire the bound action. Textual
+  dispatches clicks by widget region, not by visible/transparent pixels, so
+  an overlay only needs to *look* mostly empty to still break input.
+
+Nesting `#app-label` as `Footer`'s sibling *inside the same small
+container* sidesteps both problems: `dock: right` now resolves within a
+container that's already only 1 row tall, and the label's own bounding box
+stays narrow (auto-width, ~8 cells) rather than spanning the row, so it
+never overlaps a `FooterKey`'s clickable region in normal-width terminals.
+
+**Narrow-terminal handling (`FOOTER_LABEL_MIN_WIDTH`):** because `Footer`'s
+keys are left-packed and `#app-label` is right-docked, a terminal narrow
+enough can still make the two collide — measured via `run_test()` across
+several widths, overlap started around column 45-50 against the app's
+current 4-key footer. `Pykaxe._update_app_label()` toggles the label's
+`display` based on `self.size.width >= FOOTER_LABEL_MIN_WIDTH` (70, a
+deliberately generous margin above the measured 45-50), called from both
+`on_mount` and `on_resize` — so the label hides itself below that width
+instead of clipping over a real shortcut, and reappears once the terminal
+is widened again (verified live via `pilot.resize_terminal()`, not just at
+different fixed startup sizes).
+
 ## File browser modal (`FilePickerScreen`)
 
 Pushed with `ctrl+o` while the Input is prompting for a `Path`-typed
@@ -390,6 +429,7 @@ within it.
 | Input | border `BORDER` | border `FG` | — |
 | RichLog | border `BORDER` | (no change — not typically focused) | — |
 | Footer keys | key `ACCENT` bold, label `FG` | (Textual default) | `$block-hover-background` (Textual default) |
+| #app-label | `MUTED` text, shown (width ≥ `FOOTER_LABEL_MIN_WIDTH`) | — | — |
 | Scrollbars (RichLog/#suggestions) | transparent | — | thumb `MUTED`, track transparent |
 | Scrollbars (actively scrolling) | — | thumb `FG` | — |
 | #suggestions option | bg `BG` | highlighted: bg `ACCENT_TINT` (30% alpha), `text-style: none` | same as highlighted |
