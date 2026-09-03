@@ -4,7 +4,10 @@ title pykaxe
 
 rem Double-click launcher for pykaxe on Windows.
 rem Opens a console automatically, checks prerequisites, then runs the app
-rem via `pipx run pykaxe` -- no install step, always the latest PyPI release.
+rem via `pipx run --no-cache pykaxe` -- no install step, always the latest
+rem PyPI release. --no-cache is required: pipx run otherwise reuses a cached
+rem ephemeral environment from a prior run and can silently launch a stale
+rem version even after a new release is published.
 
 set "PYTHON_CMD="
 where python >nul 2>nul
@@ -36,5 +39,5 @@ if errorlevel 1 (
     exit /b 1
 )
 
-pipx run pykaxe
+pipx run --no-cache pykaxe
 pause

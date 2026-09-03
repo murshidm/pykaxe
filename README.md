@@ -84,13 +84,16 @@ Most people should use the launcher — see [SETUP.md](SETUP.md). If you're
 comfortable in a terminal:
 
 ```bash
-pipx run pykaxe        # run the latest release, nothing installed permanently
-pipx install pykaxe    # install it, isolated and independently upgradeable
-pip install pykaxe     # install it the plain way
+pipx run --no-cache pykaxe   # run the latest release, nothing installed permanently
+pipx install pykaxe          # install it, isolated and independently upgradeable
+pip install pykaxe           # install it the plain way
 ```
 
-`pipx run pykaxe` is exactly what the launcher does under the hood. Both pipx
-options need [pipx](https://pipx.pypa.io/) first:
+`pipx run --no-cache pykaxe` is exactly what the launcher does under the
+hood. The `--no-cache` matters: without it, `pipx run` can silently reuse an
+ephemeral environment from a previous run and launch a stale version even
+after a new release is published on PyPI. Both pipx options need
+[pipx](https://pipx.pypa.io/) first:
 
 ```bash
 python3 -m pip install --user pipx
@@ -99,7 +102,8 @@ python3 -m pipx ensurepath
 
 ## Usage
 
-Run `pykaxe` — or `pipx run pykaxe` if you didn't install it permanently.
+Run `pykaxe` — or `pipx run --no-cache pykaxe` if you didn't install it
+permanently.
 
 On first run it silently creates `~/Documents/pykaxe/scripts` for your tools,
 seeds it with a few example tools, and remembers your choice in

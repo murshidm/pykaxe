@@ -1,7 +1,10 @@
 #!/bin/bash
 # Double-click launcher for pykaxe on macOS.
 # Opens in Terminal automatically, checks prerequisites, then runs the app
-# via `pipx run pykaxe` — no install step, always the latest PyPI release.
+# via `pipx run --no-cache pykaxe` — no install step, always the latest
+# PyPI release. --no-cache is required: pipx run otherwise reuses a cached
+# ephemeral environment from a prior run and can silently launch a stale
+# version even after a new release is published.
 set -u
 
 pause_and_exit() {
@@ -29,5 +32,5 @@ if ! command -v pipx >/dev/null 2>&1; then
     pause_and_exit 1
 fi
 
-pipx run pykaxe
+pipx run --no-cache pykaxe
 pause_and_exit 0

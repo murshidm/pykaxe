@@ -36,7 +36,7 @@ bullet.
 | `src/pykaxe/examples/*.py` | The example tools seeded into a fresh tools dir. Each one is also a live conformance test of the contract (see `tests/test_tools.py`). |
 | `src/pykaxe/assets/PROMPT.md` | Given to AI chatbots (ChatGPT/Claude.ai/Gemini) so they know the tool contract *and* where to tell/write a tool file. Read by an LLM, not by code. |
 | `src/pykaxe/assets/SKILL.md` | Same contract, packaged as a Claude Code skill via `pykaxe skill` (installs to `~/.claude/skills/pykaxe-tool/SKILL.md`). |
-| `launchers/pykaxe.command`, `launchers/pykaxe.bat` | Double-click launchers (Mac/Windows) for non-technical users. Check for `python3`/`pipx`, then run `pipx run pykaxe` — always the latest PyPI release, no install step. |
+| `launchers/pykaxe.command`, `launchers/pykaxe.bat` | Double-click launchers (Mac/Windows) for non-technical users. Check for `python3`/`pipx`, then run `pipx run --no-cache pykaxe` — always the latest PyPI release, no install step. The `--no-cache` is required: plain `pipx run pykaxe` reuses a cached ephemeral env from a prior run and can silently launch a stale version. |
 | `README.md` | User-facing overview and quick start. |
 | `SETUP.md` | Step-by-step setup for beginners, written to be read *by* an AI walking a human through it. Describes the tools-dir path in prose (Finder/Explorer steps), so it drifts easily — see below. |
 | `pyproject.toml` | Hatchling build config. Version lives in `src/pykaxe/__init__.py` (`[tool.hatch.version] path = ...`), not in `pyproject.toml` itself. |

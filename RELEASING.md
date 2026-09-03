@@ -73,7 +73,10 @@ Do this deliberately, once per release, when you've decided the current
    PyPI (via trusted OIDC publishing — no local credentials involved), and
    creates the GitHub Release with the built files attached.
 7. **Watch the Actions tab** until the `release` job is green. Once it is,
-   `pipx run pykaxe` picks up the new version immediately.
+   `pipx run --no-cache pykaxe` picks up the new version immediately — plain
+   `pipx run pykaxe` (no flag) may not, since it reuses a cached ephemeral
+   environment from any previous run instead of re-checking PyPI. This is
+   why the launchers pass `--no-cache`.
 
 That's exactly two workflow runs for a release: one `ci.yml` run (step 5)
 and one `release.yml` run (step 6) — not one per push, not one per
