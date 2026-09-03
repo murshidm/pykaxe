@@ -143,8 +143,12 @@ prompts, streamed subprocess output, error/status lines) goes here via
   scrolling — a scrollbar that's invisible until you reach for it.
 - **Text color semantics inside this pane** (not CSS, but content markup
   applied per-line in Python via the `info/success/warning/error/cancelled/
-  tool_name` helpers — see "Output semantics" above):
-  - default/unstyled → terminal foreground (raw user input echoed back)
+  tool_name/user_input` helpers — see "Output semantics" above):
+  - `FG` via `user_input()` → the user's own submitted text, echoed back —
+    a third voice distinct from pykaxe's `MUTED` chrome and a tool's
+    `SUCCESS` stdout. `user_input()` also `escape_markup()`s the value,
+    which matters beyond styling: without it, a submitted value containing
+    `[` would be parsed as Rich markup instead of shown literally.
   - `MUTED` via `info()`/`cancelled()` → pykaxe's own neutral chrome:
     prompts, hints, "cancelled — \<tool\>"
   - `ACCENT` via `tool_name()` → tool names (welcome list, suggestions,
@@ -214,9 +218,15 @@ A `Horizontal` of 4 flat buttons, docked at the very bottom row.
   `[FG]<key>[/] [MUTED]<label>[/]`, i.e. the keybinding is bright, the
   action name is dim. This is the one place `FG` is used for something
   other than "focused."
-  - Note: `esc` is drawn from the same `Binding` list but its label text is
-    "Interrupt" in `BINDINGS` — the footer button hardcodes "interrupt"
-    itself rather than reading the binding description.
+  - **Single source of truth:** `StatusBar` is constructed with
+    `Pykaxe.BINDINGS` (`StatusBar(self.BINDINGS)`) and builds each button's
+    key + label by reading the matching `Binding.key`/`Binding.description`
+    at compose time — `StatusBar.FOOTER_ACTIONS` only picks *which* four
+    bindings appear and in what order (`ctrl+o`/browse is deliberately
+    excluded here — it's contextual, not a standing shortcut). `KEY_DISPLAY`
+    is the one allowed display-only override (`"escape"` → `"esc"`); a
+    binding's key or description can't drift out of sync with the footer
+    since there's nothing left to retype by hand.
 - **Button style:** `background: {BG}`, `border: solid {BORDER}` (not
   `round`, unlike every other bordered element — buttons are the one
   rectangular/solid-border exception), `margin-right: 2` between them,
@@ -290,9 +300,13 @@ within it.
 - **Change what a message means (info/success/warning/error/cancelled):**
   don't reach for a raw `f"[{COLOR}]...[/]"` string — use the matching
   helper (`info()`, `success()`, `warning()`, `error()`, `cancelled()`,
-  `tool_name()`) defined next to `footer_label()` near the top of `app.py`.
-  That's the single place the outcome vocabulary is defined; call sites
-  should never re-decide it.
+  `tool_name()`, `user_input()`) defined next to `footer_label()` near the
+  top of `app.py`. That's the single place the outcome vocabulary is
+  defined; call sites should never re-decide it.
+- **Change a keyboard shortcut's key or footer text:** edit the matching
+  `Binding` in `Pykaxe.BINDINGS` — `StatusBar` reads both from there, so
+  there's nothing else to update. To change *which* bindings the footer
+  shows or their order, edit `StatusBar.FOOTER_ACTIONS`.
 - **Add/remove a section:** edit `Pykaxe.compose()` (widget tree) and add a
   matching block to `Pykaxe.CSS`.
 - **Change what a section shows/when:** the *content* of each widget

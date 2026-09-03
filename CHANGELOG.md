@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`ERROR`, `WARNING`) were added, with all feedback strings routed through
   new `info()/success()/warning()/error()/cancelled()/tool_name()` helpers
   in `app.py` rather than ad-hoc inline markup.
+- The footer's four buttons (`[esc] interrupt`, `[ctrl+y] copy`, etc.) are
+  now built directly from `Pykaxe.BINDINGS` instead of hardcoding their own
+  key/label strings — previously the footer's "interrupt" label and the
+  `Interrupt` binding description could drift out of sync since they were
+  two separate literals; there is now exactly one place each shortcut's key
+  and text are written.
+- User input echoed back into the log (e.g. an argument value you typed) is
+  now shown in `FG` instead of the terminal's unstyled default, and is
+  markup-escaped — previously a typed value containing `[` could be parsed
+  as Rich markup instead of displayed literally.
 - The welcome screen now shows the running version next to the `pykaxe`
   banner (e.g. `pykaxe v0.1.7`), so it's visible at a glance which release
   you're on.

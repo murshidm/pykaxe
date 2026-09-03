@@ -52,6 +52,15 @@ def footer_label(key: str, label: str) -> str:
     return f"[{FG}]{escape_markup(f'[{key}]')}[/] [{MUTED}]{label}[/]"
 
 
+# Textual's key ids aren't always what should be printed ("escape" instead
+# of "esc") — this is the one allowed display-only override; everything
+# else the footer shows (key and label) is read straight off Pykaxe's own
+# BINDINGS list (see StatusBar) instead of being retyped, so a rebound key
+# or an edited description can't silently drift out of sync with the
+# footer.
+KEY_DISPLAY = {"escape": "esc"}
+
+
 # Semantic output helpers (DESIGN.md §"output semantics"): every pykaxe
 # feedback line goes through one of these instead of an ad-hoc f-string, so
 # what a message *means* (info/success/warning/error/cancelled) is decided
@@ -78,6 +87,15 @@ def cancelled(text: str) -> str:
 
 def tool_name(name: str) -> str:
     return f"[{ACCENT}]{escape_markup(name)}[/]"
+
+
+def user_input(text: str) -> str:
+    """What the user just typed, echoed back into the log. FG makes it read
+    as a third voice distinct from pykaxe's own MUTED chrome and a tool's
+    SUCCESS-colored stdout. escape_markup is required here, not decorative:
+    without it, a submitted value containing "[" would be parsed as Rich
+    markup instead of shown literally."""
+    return f"[{FG}]{escape_markup(text)}[/]"
 
 
 def fuzzy_filter(query: str, names: list[str]) -> list[str]:
@@ -157,11 +175,27 @@ class Shell:
 
 
 class StatusBar(Horizontal):
+    """Builds its buttons from the app's own BINDINGS instead of retyping
+    each key/label as a separate literal — see the KEY_DISPLAY note above.
+    Only a curated subset appears here (in this specific order, most
+    urgent first) since ctrl+o/browse is contextual, not a standing
+    shortcut."""
+
+    FOOTER_ACTIONS = ("interrupt", "copy_output", "scan_tools", "quit")
+
+    def __init__(self, bindings: list[Binding]) -> None:
+        super().__init__()
+        self._bindings = {binding.action: binding for binding in bindings}
+
     def compose(self) -> ComposeResult:
-        yield Button(footer_label("esc", "interrupt"), id="interrupt", classes="footer-btn")
-        yield Button(footer_label("ctrl+y", "copy"), id="copy_output", classes="footer-btn")
-        yield Button(footer_label("ctrl+s", "scan"), id="scan_tools", classes="footer-btn")
-        yield Button(footer_label("ctrl+c", "quit"), id="quit", classes="footer-btn")
+        for action in self.FOOTER_ACTIONS:
+            binding = self._bindings[action]
+            key = KEY_DISPLAY.get(binding.key, binding.key)
+            yield Button(
+                footer_label(key, binding.description.lower()),
+                id=action,
+                classes="footer-btn",
+            )
 
 
 class FilePickerScreen(ModalScreen[Path | None]):
@@ -310,8 +344,8 @@ class Pykaxe(App):
 
     BINDINGS = [
         Binding("ctrl+c", "quit", "Quit", priority=True),
-        Binding("ctrl+y", "copy_output", "Copy output"),
-        Binding("ctrl+s", "scan_tools", "Scan tools"),
+        Binding("ctrl+y", "copy_output", "Copy"),
+        Binding("ctrl+s", "scan_tools", "Scan"),
         Binding("ctrl+o", "browse_file", "Browse file"),
         # priority=True: this must win over whatever widget has focus (e.g.
         # the Input) so a runaway tool can always be killed immediately.
@@ -330,7 +364,7 @@ class Pykaxe(App):
         with Vertical(id="bottom"):
             yield OptionList(id="suggestions")
             yield Input(placeholder="Type / to load a tool...")
-            yield StatusBar()
+            yield StatusBar(self.BINDINGS)
 
     def on_mount(self) -> None:
         self.tools = discover_tools(self.tools_dir)
@@ -432,7 +466,7 @@ class Pykaxe(App):
 
         shell = self.shell
         if self._awaiting_argument():
-            self.write_line(text)
+            self.write_line(user_input(text))
             self.write_line("")
             await self.collect_argument(text)
         elif text.startswith("/"):
@@ -441,14 +475,14 @@ class Pykaxe(App):
             if matches:
                 await self.load_tool(matches[0])
             else:
-                self.write_line(text)
+                self.write_line(user_input(text))
                 self.write_line(error(f"no such tool: {query}"))
                 self.write_line("")
         elif shell.tool is None:
             self.write_line(info("select a tool first — type / to see available tools"))
             self.write_line("")
         else:
-            self.write_line(text)
+            self.write_line(user_input(text))
             self.write_line("")
 
     async def load_tool(self, name: str) -> None:
