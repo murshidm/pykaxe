@@ -149,6 +149,11 @@ class Shell:
         self.values: dict[str, str] = {}
         self.process: asyncio.subprocess.Process | None = None
         self.runner_task: asyncio.Task | None = None
+        # Set by whichever pykaxe-initiated kill site (interrupt/quit/
+        # watchdog) already printed its own explanation for why the process
+        # is dying, so _run_and_pump's completion tail doesn't also print a
+        # second, redundant line for the same termination.
+        self.kill_announced: bool = False
 
 
 class StatusBar(Horizontal):
@@ -635,10 +640,13 @@ class Pykaxe(App):
 
         if killed_reason:
             self.write_line_to(shell, error(f"{shell.tool} killed — {killed_reason}"))
-        elif returncode not in (0, None, -9, -15):
+        elif shell.kill_announced:
+            pass  # interrupt/quit/watchdog already explained this termination
+        elif returncode not in (0, None):
             self.write_line_to(shell, error(f"{shell.tool} failed — exit {returncode}"))
         elif returncode == 0:
             self.write_line_to(shell, success(f"{shell.tool} finished"))
+        shell.kill_announced = False
 
         self.write_line_to(shell, "")
         if shell is self.shell:
@@ -654,6 +662,7 @@ class Pykaxe(App):
         self.write_line_to(
             shell, error(f"{shell.tool} killed — exceeded {MAX_TOOL_RUNTIME_SECONDS}s runtime limit")
         )
+        shell.kill_announced = True
         self._kill_process(process)
 
     def _kill_process(self, process: asyncio.subprocess.Process) -> None:
@@ -714,6 +723,7 @@ class Pykaxe(App):
         rather than the terminal vanishing instantly."""
         if self.shell.process is not None:
             self.write_line(info("shutting down — stopping running tool..."))
+            self.shell.kill_announced = True
             self._kill_process(self.shell.process)
 
         if self.shell.runner_task is not None:
@@ -739,6 +749,7 @@ class Pykaxe(App):
 
         shell = self.shell
         if shell.process is not None:
+            shell.kill_announced = True
             self._kill_process(shell.process)
             self.write_line(cancelled(f"{shell.tool} (terminated)"))
         elif self._awaiting_argument():

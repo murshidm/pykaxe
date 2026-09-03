@@ -69,6 +69,27 @@ streamed output line, so there was no way to tell "still running" from
 "done" by looking at the log alone. A non-zero exit or a resource-limit
 kill prints the `ERROR` equivalent instead.
 
+### Completion feedback: who already explained the kill
+
+`_run_and_pump`'s completion tail (the code above) has to decide what, if
+anything, to say once a process exits — but three other places can *also*
+kill the process first and print their own explanation: `_watchdog` (runtime
+limit — prints `ERROR`), `action_quit` (app closing — prints `info`), and
+`action_interrupt` (user pressed Esc — prints `cancelled`). To avoid a
+second, redundant completion line stacking under whichever of those already
+fired, `Shell.kill_announced` is a one-shot flag: each of those three sites
+sets it to `True` right before killing, the tail checks it and stays silent
+if set, then resets it to `False` for the next run.
+
+This replaced an earlier version that special-cased `returncode in (-9,
+-15)` to mean "already handled, say nothing" — which was wrong for any
+*external* kill (an OOM kill, a segfault, something outside pykaxe sending
+the signal): those also produce a `-9`/`-15` returncode but nothing had
+actually printed an explanation, so the tool would die silently. The flag
+only suppresses the tail when a pykaxe code path is actually the one that
+decided to kill the process, so an unexplained termination now correctly
+falls through to `× <tool> failed — exit -9`.
+
 ## Layout sections (top to bottom)
 
 ```

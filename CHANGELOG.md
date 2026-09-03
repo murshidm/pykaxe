@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A tool killed by something outside pykaxe (e.g. the OS OOM killer, a
+  segfault) used to exit silently — the completion check special-cased any
+  `-9`/`-15` returncode as "already explained," which was only true when
+  pykaxe itself did the killing (Esc, quit, or the runtime watchdog).
+  Termination is now tracked explicitly per-run (`Shell.kill_announced`), so
+  pykaxe's own kills still print exactly one explanation and stay silent in
+  the completion tail, while a genuinely unexpected kill now correctly
+  surfaces as `× <tool> failed — exit -9`.
 - `resolve_tools_dir()` now reseeds the example tools when the tools folder
   exists but is empty (previously only seeded on first creation), and the
   welcome screen tells you the resolved folder path when no tools are found
