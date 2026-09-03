@@ -40,6 +40,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   previously had its brackets silently eaten, and a default matching a real
   Rich style name (`[bold]`, `[red]`, etc.) would have actually been
   applied as styling instead of shown literally.
+- The welcome title and each tool's banner are now a `rich.rule.Rule`
+  (a thin horizontal divider with a colored, left-aligned title) instead
+  of a plain text line — gives each new context a clear heading without
+  adding a box, panel, or any new chrome. `ctrl+y` copy still gets a plain
+  equivalent (e.g. `pykaxe v0.1.10`, `word-count — Count the number of
+  words in text.`), it just doesn't reproduce the decorative dashes.
+- The suggestion list's highlighted row and the status badge no longer use
+  solid color fills. The suggestion highlight was a flat, low-contrast
+  dark grey (`BORDER`) — easy to miss and visually unrelated to what's
+  being selected; it's now a translucent 30%-alpha wash of the
+  tool-identity amber, matching the same restraint Textual's own built-in
+  themes use for an unfocused list cursor (`block-cursor-blurred-
+  background`, confirmed in Textual's installed source). The badge was a
+  solid amber block with hardcoded dark inverted text; it's now a
+  translucent 12%-alpha wash with color-coded text (amber tool name, grey
+  "active" or green "• running") — reads as a status line instead of a
+  banner, and "running" reuses the same green that already means "this
+  tool is live" for streamed output elsewhere, not a new meaning.
 - The welcome screen now shows the running version next to the `pykaxe`
   banner (e.g. `pykaxe v0.1.7`), so it's visible at a glance which release
   you're on.

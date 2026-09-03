@@ -25,6 +25,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, DirectoryTree, Input, OptionList, RichLog, Static
 from textual.widgets.option_list import Option
 from rich.markup import escape as escape_markup
+from rich.rule import Rule
 from rich.text import Text
 
 FG = "#f2f2f2"
@@ -35,6 +36,25 @@ SUCCESS = "#7ee787"
 ACCENT = "#f2c94c"
 ERROR = "#e5534b"
 WARNING = "#e5c07b"
+
+
+def _alpha(hex_color: str, alpha: float) -> str:
+    """Textual CSS has no `color 30%` shorthand — alpha has to be baked
+    into an rgba()/hex-with-alpha value up front (confirmed against
+    Textual's own <color> CSS type reference)."""
+    r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+# Textual's own built-in themes highlight an unfocused list cursor with the
+# primary color at ~30% alpha rather than a solid block (see
+# block-cursor-blurred-background in textual/design.py) — ACCENT_TINT
+# mirrors that same restraint for our suggestion list, using our own
+# tool-identity color instead of a generic "primary". ACCENT_WASH is a
+# lighter version of the same idea for the status badge: enough of a
+# color cue to read as "this row is state," short of a filled block.
+ACCENT_TINT = _alpha(ACCENT, 0.3)
+ACCENT_WASH = _alpha(ACCENT, 0.12)
 
 # Protection limits for running tools. Tool scripts are user-authored and
 # untrusted, so every guard here lives on the app side rather than relying
@@ -274,11 +294,9 @@ class Pykaxe(App):
     #badge {{
         display: none;
         height: 1;
-        background: {ACCENT};
-        color: #1a1a1a;
+        background: {ACCENT_WASH};
         content-align: left middle;
         padding: 0 1;
-        text-style: bold;
     }}
     RichLog {{
         background: {BG};
@@ -346,7 +364,7 @@ class Pykaxe(App):
         background: {BG};
     }}
     OptionList > .option-list--option-highlighted {{
-        background: {BORDER};
+        background: {ACCENT_TINT};
         text-style: none;
     }}
     """
@@ -387,7 +405,10 @@ class Pykaxe(App):
         self.query_one(RichLog).clear()
 
     def _show_welcome(self) -> None:
-        self.write_line(f"[{FG}]pykaxe[/] [{MUTED}]v{__version__}[/]")
+        title = Text()
+        title.append("pykaxe", style=f"bold {FG}")
+        title.append(f" v{__version__}", style=MUTED)
+        self._write_heading(title, f"pykaxe v{__version__}")
         self.write_line("")
         if self.tools:
             self.write_line(info("available tools"))
@@ -433,6 +454,24 @@ class Pykaxe(App):
 
     def write_line(self, text: str) -> None:
         self.write_line_to(self.shell, text)
+
+    def _write_heading(self, title: Text, copy_text: str) -> None:
+        """A quiet Rule anchors each new top-level context — the welcome
+        banner, or a freshly loaded tool's banner — the same way the rest
+        of the app marks "what state it's in" with structure (a border, a
+        badge) rather than color alone. `style=BORDER` keeps the rule line
+        itself quiet/structural; the colored `title` Text carries the
+        actual emphasis, same division of labor as `§5 Borders` elsewhere.
+        Used sparingly — only at genuine context transitions — so it stays
+        a signal rather than becoming wallpaper.
+
+        RichLog.write() accepts any Rich renderable, not just markup
+        strings, so this bypasses write_line_to entirely — a Rule can't be
+        expressed as a markup string. shell.lines still gets a plain-text
+        `copy_text` so ctrl+y keeps working; the decorative dashes aren't
+        worth reproducing in copied text, only the title's content is."""
+        self.shell.lines.append(copy_text)
+        self.query_one(RichLog).write(Rule(title=title, style=BORDER, align="left"))
 
     def _awaiting_argument(self) -> bool:
         shell = self.shell
@@ -527,10 +566,13 @@ class Pykaxe(App):
         self._clear_screen()
 
         desc = getattr(module, "TOOL_DESCRIPTION", "")
-        banner = tool_name(name)
+        title = Text()
+        title.append(name, style=f"bold {ACCENT}")
+        copy_text = name
         if desc:
-            banner += f" [{MUTED}]— {escape_markup(desc)}[/]"
-        self.write_line(banner)
+            title.append(f" — {desc}", style=MUTED)
+            copy_text += f" — {desc}"
+        self._write_heading(title, copy_text)
         self.write_line("")
 
         self.update_badge()
@@ -838,11 +880,17 @@ class Pykaxe(App):
 
 
     def update_badge(self) -> None:
+        """Formerly a solid ACCENT block with dark inverted text — replaced
+        with a translucent wash (ACCENT_WASH, see the token comment above)
+        plus color-coded text, matching how the rest of the app already
+        carries state through color rather than a filled block. Running
+        reuses SUCCESS (green already means "this tool is live" for
+        streamed stdout — same meaning here, not a new one)."""
         shell = self.shell
         badge = self.query_one("#badge", Static)
         if shell.tool:
-            state = "running" if shell.process is not None else "active"
-            badge.update(f"pykaxe {state} > {escape_markup(shell.tool)}")
+            state = f"[{SUCCESS}]• running[/]" if shell.process is not None else f"[{MUTED}]active[/]"
+            badge.update(f"{tool_name(shell.tool)} [{MUTED}]·[/] {state}")
             badge.display = True
         else:
             badge.update("")

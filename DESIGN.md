@@ -31,6 +31,14 @@ All layout/style lives in one place: the `CSS` class variable on `Pykaxe`
 - **Chrome disappears when idle.** The badge, the suggestions dropdown, and
   scrollbars all default to `display: none` / transparent and only appear
   when they have something to show. Nothing sits on screen "just in case."
+- **Tints over blocks for "this row is selected/active."** Confirmed
+  against Textual's own installed source (`textual/design.py`,
+  `theme.py`): its built-in themes highlight an unfocused list cursor with
+  the primary color at `with_alpha(0.3)` — a translucent tint — not a
+  solid fill. Every "you're here" indicator in this app (`#suggestions`
+  highlight, `#badge`) follows the same restraint via `ACCENT_TINT`/
+  `ACCENT_WASH` rather than an opaque colored block. See "Color palette"
+  below.
 
 ## Color palette
 
@@ -40,16 +48,60 @@ means editing these constants directly.
 
 | Constant | Value | Meaning | Used in |
 | --- | --- | --- | --- |
-| `FG` | `#f2f2f2` | primary/focused | body text, focused input/log border, badge text-on-amber is `#1a1a1a` instead |
+| `FG` | `#f2f2f2` | primary/focused | body text, focused input/log border, welcome title (via `_write_heading`) |
 | `MUTED` | `#8a8a8a` | secondary/inactive/neutral status | help text, prompts, hint lines, unfocused hover states, neutral info messages |
 | `BORDER` | `#3a3a3a` | resting structure | unfocused borders on RichLog/Input/suggestions |
 | `BG` | `ansi_default` | all backgrounds | Screen, RichLog, Input, buttons, suggestions, file picker |
-| `ACCENT` | `#f2c94c` (amber) | tool identity | `/toolname` in welcome list & suggestions, the badge background, tool banner |
+| `ACCENT` | `#f2c94c` (amber) | tool identity | `/toolname` in welcome list & suggestions, badge tool name, tool banner title (via `_write_heading`) |
 | `SUCCESS` | `#7ee787` (green) | live subprocess output / successful outcome | every line streamed from a running tool's stdout, `✓ <tool> finished`, `✓ copied — N lines` |
 | `ERROR` | `#e5534b` (red) | failed action / invalid input | `× no such tool`, `× <field> is required`, `× <tool> failed — exit N`, `× <tool> killed — ...` |
 | `WARNING` | `#e5c07b` (amber-yellow) | caution, not a failure | `! a tool is already running — press esc to stop it first` |
 
 There is no dark/light theme switch — this is one fixed palette.
+
+### Alpha tokens: `ACCENT_TINT` / `ACCENT_WASH`
+
+Textual CSS has no `color 30%` shorthand — alpha has to be baked into an
+`rgba()`/hex-with-alpha value up front (confirmed against Textual's `<color>`
+CSS type reference). `_alpha(hex, alpha)` does that conversion; two derived
+tokens sit next to the base palette:
+
+| Constant | Value | Meaning | Used in |
+| --- | --- | --- | --- |
+| `ACCENT_TINT` | `ACCENT` @ 30% alpha | "this row is the current selection" | `#suggestions` highlighted option — mirrors Textual's own `block-cursor-blurred-background` (`primary.with_alpha(0.3)`) |
+| `ACCENT_WASH` | `ACCENT` @ 12% alpha | "this row is a tool's live status" | `#badge` background |
+
+Both are still `ACCENT` at heart — this doesn't add a new color to the
+palette, just a restrained way of applying the existing one to a whole row
+instead of only to text.
+
+### Headings: `Rule`, not a plain text line
+
+`_write_heading(title, copy_text)` marks each new top-level context — the
+welcome banner, or a freshly loaded tool's banner — with a `rich.rule.Rule`
+(`style=BORDER`, `align="left"`) instead of a plain markup string. The rule
+line itself stays quiet/structural (`BORDER`, same as every other resting
+border in the app); the `title` — a `rich.text.Text` built with
+`.append(text, style=...)` rather than markup — carries the actual color
+(bold `FG` for "pykaxe", bold `ACCENT` for a tool name). Used sparingly, at
+genuine context transitions only, so it reads as a signal rather than
+wallpaper.
+
+`RichLog.write()` accepts any Rich renderable, not only markup strings —
+`_write_heading` is the one place in the app that uses that directly
+instead of going through `write_line_to`. Because a `Rule`'s decorative
+dashes have no meaningful plain-text form, `shell.lines` (the buffer
+`ctrl+y` copies from) gets a separate, plain `copy_text` argument instead —
+e.g. `"pykaxe v0.1.10"` or `"word-count — Count the number of words in
+text."` — so copying output right after a heading doesn't paste a wall of
+dashes or lose the title's content.
+
+Building the title via `Text.append()` rather than a markup f-string is
+also a small security improvement, not just idiomatic: `Text.append()`
+never parses its argument as markup, so a tool name or description
+containing `[` can't be interpreted as a style tag — no `escape_markup()`
+call needed at these two sites (contrast with `tool_name()`/`user_input()`
+elsewhere, which must escape because they build markup strings).
 
 ### Output semantics — semantic helpers, not scattered markup
 
@@ -94,7 +146,7 @@ falls through to `× <tool> failed — exit -9`.
 
 ```
 ┌──────────────────────────────────────────────┐
-│ #badge            "pykaxe active > toolname"  │  ← 1 row, hidden unless a tool is loaded
+│ #badge            "toolname · active"         │  ← 1 row, hidden unless a tool is loaded
 ├──────────────────────────────────────────────┤
 │                                                │
 │ RichLog           scrolling output/log        │  ← fills all remaining vertical space
@@ -119,11 +171,29 @@ thing to one, and it is off by default.
 - **Hidden state:** `display: none`, zero height — most of the time this
   row doesn't exist at all.
 - **Shown state:** appears the instant a tool is loaded (`update_badge()`),
-  reads `pykaxe active > <tool>` or `pykaxe running > <tool>`.
-- **Style:** solid amber (`ACCENT`) background, dark text (`#1a1a1a`, hardcoded
-  — the one color not drawn from the shared palette, chosen for contrast
-  against amber rather than reusing `FG`), bold, left-aligned, 1 row tall,
-  `0 1` padding.
+  reads `<tool> · active` or `<tool> · • running`.
+- **Style:** `ACCENT_WASH` (a translucent 12%-alpha tint, not a solid
+  fill — see "Alpha tokens" above) background, left-aligned, 1 row tall,
+  `0 1` padding, no forced text-style. Text color does the work instead of
+  a block: tool name is `tool_name()` (bold `ACCENT`), the state word is
+  `MUTED` for "active" or `SUCCESS` with a `•` for "running" — reusing
+  `SUCCESS` deliberately, since green already means "this tool is live" for
+  streamed stdout elsewhere in the app; this isn't a new meaning for the
+  color, the same one applied to a status word instead of output text.
+  Previously this was a solid `ACCENT` block with hardcoded dark text and
+  forced bold — replaced because it read as a heavy, dated "inverted
+  banner" rather than a status line, and because a solid full-saturation
+  block for something shown on *every* tool load turned out to compete
+  with the actual outcome colors (`ERROR`/`WARNING`/`SUCCESS`) for
+  attention instead of staying in the background like other chrome.
+  - **A `height: 1` widget has no room for a border.** An earlier version
+    of this change added `border-bottom: solid {BORDER}` for a subtle
+    separator from the `RichLog` below — that silently collapsed the
+    badge's own content area to zero height (`Size(height=0)`, confirmed
+    via `run_test()`), since the single available row went entirely to the
+    border edge instead of the text. If a divider is wanted here again,
+    the badge's `height` has to grow to accommodate it; don't add a border
+    edge to a `height: 1` widget expecting the text to still fit.
 - **Purpose:** the only persistent visual indicator of "which tool is
   active/running" — useful since the RichLog scrolls the tool's own banner
   out of view.
@@ -170,7 +240,9 @@ prompts, streamed subprocess output, error/status lines) goes here via
     exits, kills — always prefixed `×`
   - `WARNING` (amber-yellow) via `warning()` → a caution that isn't a
     failure (e.g. a tool already running) — always prefixed `!`
-  - `FG` → the one-off `pykaxe v0.1.x` title line
+  - A `Rule` via `_write_heading()` (not markup — a Rich renderable
+    written directly) → the `pykaxe vX` welcome title and each tool's
+    banner. See "Headings" above.
 - **Scrollback cap:** `max_lines=MAX_OUTPUT_LINES` (2000) — old lines are
   dropped, not paginated.
 
@@ -193,10 +265,19 @@ sitting directly above the `Input`, inside `#bottom`.
 - **Background:** `ansi_default`, same as everything else — it is not a
   separate "popup surface," it reads as part of the same panel, just an
   extra strip above the Input.
-- **Highlight:** the focused/hovered option gets `background: {BORDER}` —
-  intentionally low-contrast/neutral (dark grey), not an accent color, so
-  the amber tool-name text stays the visual anchor rather than the
-  selection box.
+- **Highlight:** the focused/hovered option gets `background: {ACCENT_TINT}`
+  — a translucent 30%-alpha wash of the tool-identity color, not a solid
+  fill. Previously this was `{BORDER}` (a flat, near-invisible dark grey)
+  — low-contrast enough that the "you're here" signal was easy to miss,
+  and, being an unrelated neutral color, disconnected from what's actually
+  being selected (a tool). `ACCENT_TINT` ties the highlight to the same
+  amber that already means "tool" everywhere else, at an alpha chosen to
+  mirror Textual's own default-theme convention for an unfocused list
+  cursor (`block-cursor-blurred-background`, confirmed in
+  `textual/design.py`) rather than inventing a new intensity. Only
+  `color`/`background`/`text-style` apply to this component class — no
+  `border`, confirmed against `OptionList.DEFAULT_CSS` in Textual's own
+  source.
 - **Scrollbar:** same ghost-until-hover treatment as RichLog.
 - **Selecting an option** (click or Enter) calls `load_tool()` directly —
   this is the same code path as typing `/name` and hitting Enter in the
@@ -296,16 +377,24 @@ within it.
 | Buttons | border `BORDER`, bg `BG` | border unchanged, `text-style: none` forced | border `FG` |
 | Scrollbars (RichLog/#suggestions) | transparent | — | thumb `MUTED`, track transparent |
 | Scrollbars (actively scrolling) | — | thumb `FG` | — |
-| #suggestions option | bg `BG` | highlighted: bg `BORDER`, `text-style: none` | same as highlighted |
-| #badge | hidden | amber bg, dark text, shown | — |
+| #suggestions option | bg `BG` | highlighted: bg `ACCENT_TINT` (30% alpha), `text-style: none` | same as highlighted |
+| #badge | hidden | bg `ACCENT_WASH` (12% alpha), color-coded text, shown | — |
 | File picker border | white always | white always | — |
 
 ## Where to change things
 
 - **Recolor anything:** edit the constants at the top of `app.py` (`FG`,
-  `MUTED`, `BORDER`, `BG`, `ACCENT`, `SUCCESS`, `ERROR`, `WARNING`) — every
-  rule below references these, nothing is hardcoded elsewhere except the
-  badge's `#1a1a1a` text and the file picker's unconditional `FG` border.
+  `MUTED`, `BORDER`, `BG`, `ACCENT`, `SUCCESS`, `ERROR`, `WARNING`,
+  `ACCENT_TINT`, `ACCENT_WASH`) — every rule below references these,
+  nothing is hardcoded elsewhere except the file picker's unconditional
+  `FG` border. `ACCENT_TINT`/`ACCENT_WASH` are derived from `ACCENT` via
+  `_alpha()`, not independent colors — changing `ACCENT` moves both
+  automatically.
+- **Add a heading:** use `self._write_heading(title, copy_text)` with a
+  `Text` built via `.append()` — don't hand-roll another plain markup
+  title line for a new top-level context. Reserve it for genuine context
+  transitions (see "Headings" above); using it for routine messages would
+  turn a signal into wallpaper.
 - **Change what a message means (info/success/warning/error/cancelled):**
   don't reach for a raw `f"[{COLOR}]...[/]"` string — use the matching
   helper (`info()`, `prompt()`, `success()`, `warning()`, `error()`,
