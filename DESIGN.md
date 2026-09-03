@@ -16,13 +16,7 @@ matching colors automatically.
 
 - **Borrow the terminal, don't repaint it.** `BG = "ansi_default"` — the
   app has no background color of its own; every background blends into
-  whatever terminal theme the user already has. An earlier draft of this
-  round tried a real app-owned dark background plus a separate elevated
-  `PANEL` tone (matching Textual's own demo app's look); that was reverted
-  at the user's explicit request for exactly one background, transparent
-  where possible, so borders and `Rule` dividers — the app's actual
-  structural language — read clearly against *any* terminal, and don't
-  have to compete with filled color blocks.
+  whatever terminal theme the user already has.
 - **Borders are a primary structural device.** `round` borders dim to a
   near-invisible neutral grey at rest and brighten only when
   focused/active. `BORDER` is a plain, hue-neutral grey specifically so it
@@ -35,29 +29,34 @@ matching colors automatically.
   "this is output the running subprocess produced, or a successful
   completion." `PRIMARY` (violet) is pykaxe's own brand/heading color (the
   welcome title), kept strictly separate so it never gets mistaken for
-  tool identity or a success signal. `PRIMARY`/`ACCENT`/`SUCCESS`/`ERROR`/
-  `WARNING` are foreground/text colors, not backgrounds — terminal
-  transparency never applied to them, and dropping the app-owned
-  background didn't touch any of them.
+  tool identity or a success signal.
 - **Outcomes have their own vocabulary, separate from tool identity.**
   `ERROR` (red) and `WARNING` (amber-yellow) exist specifically so a failed
   action, an invalid input, or a caution never has to borrow `MUTED` (which
   would make it look like neutral status) or `ACCENT` (which would make it
   look like a tool name). See "Output semantics" below.
+- **Exactly one heading mechanism, used consistently everywhere.** The
+  welcome banner and a freshly loaded tool's banner both go through the
+  same `_write_heading()` (a `Rule`), inside the same `RichLog`, with no
+  padding of its own — so they render at *identical* left margins by
+  construction, not by careful CSS-matching across separate widgets.
+  Earlier drafts of this app had a separate `#badge` widget sitting above
+  `RichLog` showing `<tool> · active`; it was removed entirely (not just
+  restyled) because a second widget with its own position/padding could
+  never be pixel-consistent with the heading inside `RichLog`, and reading
+  as a second "heading" competed with the first. There is no persistent
+  header chrome at all now — a tool's identity and "help text" (the
+  argument prompts) live in the log itself, and the running/idle state
+  lives in the Input's placeholder (`update_input_placeholder`).
 - **Chrome disappears when idle, or when not relevant to the current
-  state.** `#badge`, the suggestions dropdown, and scrollbars all default
-  to `display: none` / transparent and only appear when they have
-  something to show. There is no persistent "header" chrome shown while
-  idle — an earlier draft tried a `Digits`-based tool-count stat bar there
-  (see CHANGELOG); removed at the user's request as unnecessary.
+  state.** The suggestions dropdown and scrollbars default to `display:
+  none` / transparent and only appear when they have something to show.
 - **Tints over blocks for "this row is selected/active."** Confirmed
   against Textual's own installed source (`textual/design.py`): its
   built-in themes highlight an unfocused list cursor with the primary
   color at `with_alpha(0.3)` — a translucent tint — not a solid fill.
   `#suggestions`'s highlighted row follows the same restraint via
-  `ACCENT_TINT`. `#badge` follows the same "no filled block" principle,
-  just taken further: flat colored text on the same background as
-  everything else, not even a tint — see "Badge" below for why.
+  `ACCENT_TINT`.
 
 ## Theming: a registered Textual `Theme`
 
@@ -81,13 +80,13 @@ everything pykaxe draws itself. Registering the theme once means
 `$accent`, which is set to `ACCENT`) — verified in `run_test()`, not just
 assumed — without a single line of custom Footer CSS.
 
-Widgets pykaxe fully owns (`RichLog` content, `#badge`, `#suggestions`, the
-file picker) keep using the plain Python constants directly in an
-f-string `CSS`, exactly as before — the theme only needs to cover the
-surface `Footer` already references. Rich markup strings (everything
-written into `RichLog`) *cannot* reference Textual's `$variable` syntax at
-all — that's DOM CSS only — so those call sites will always need the
-literal hex constants regardless of theming.
+Widgets pykaxe fully owns (`RichLog` content, `#suggestions`, the file
+picker) keep using the plain Python constants directly in an f-string
+`CSS`, exactly as before — the theme only needs to cover the surface
+`Footer` already references. Rich markup strings (everything written into
+`RichLog`) *cannot* reference Textual's `$variable` syntax at all — that's
+DOM CSS only — so those call sites will always need the literal hex
+constants regardless of theming.
 
 `ENABLE_COMMAND_PALETTE = False` on `Pykaxe`: Textual's generic command
 palette (theme switching, its own screenshot action, etc.) isn't part of
@@ -104,10 +103,10 @@ Defined as module-level constants near the top of `app.py`.
 | `FG` | `#f2f2f2` | primary/focused | body text, focused input border |
 | `MUTED` | `#8a8a8a` | secondary/inactive/neutral status | help text, prompts, hint lines, neutral info messages |
 | `BORDER` | `#3a3a3a` | resting structure | unfocused borders on RichLog/Input/suggestions, `Rule` heading lines |
-| `BG` | `ansi_default` | the one background, everywhere | Screen, RichLog, Input, `#bottom`, `#badge`, `#suggestions`, file picker |
+| `BG` | `ansi_default` | the one background, everywhere | Screen, RichLog, Input, `#bottom`, `#suggestions`, file picker |
 | `PRIMARY` | `#bd93f9` (violet) | app/brand identity, headings | welcome title (`_write_heading`) |
-| `ACCENT` | `#f2c94c` (amber) | tool identity | `/toolname` in welcome list & suggestions, badge tool name, tool banner title |
-| `SUCCESS` | `#7ee787` (green) | live subprocess output / successful outcome | every line streamed from a running tool's stdout, `✓ <tool> finished`, `✓ copied — N lines`, badge "• running" |
+| `ACCENT` | `#f2c94c` (amber) | tool identity | `/toolname` in welcome list & suggestions, tool banner title |
+| `SUCCESS` | `#7ee787` (green) | live subprocess output / successful outcome | every line streamed from a running tool's stdout, `✓ <tool> finished`, `✓ copied — N lines` |
 | `ERROR` | `#e5534b` (red) | failed action / invalid input | `× no such tool`, `× <field> is required`, `× <tool> failed — exit N`, `× <tool> killed — ...` |
 | `WARNING` | `#e5c07b` (amber-yellow) | caution, not a failure | `! a tool is already running — press esc to stop it first` |
 
@@ -126,9 +125,6 @@ Textual CSS has no `color 30%` shorthand — alpha has to be baked into an
 
 Still `ACCENT` at heart — this doesn't add a new color, just a restrained
 way of applying the existing one to a whole row instead of only to text.
-Alpha-blending is composited against whatever's actually behind it at
-paint time, so this still works correctly now that the background it's
-blended over is `ansi_default` rather than a fixed hex.
 
 ### Headings: `Rule`, not a plain text line
 
@@ -141,9 +137,18 @@ carries the actual color: bold `PRIMARY` for "pykaxe" (brand identity),
 bold `ACCENT` for a tool name (tool identity — deliberately a different
 color from the app's own brand, so a tool banner never reads as "part of
 pykaxe's own chrome"). Used sparingly, at genuine context transitions only,
-so it reads as a signal rather than wallpaper. This is the *only* heading
-mechanism in the app — see "Badge" below for why `#badge` was deliberately
-kept from becoming a second, competing one.
+so it reads as a signal rather than wallpaper.
+
+This is the *only* heading mechanism in the app, and the *only* "what is
+this screen about" indicator once a tool loads — there is no separate
+badge/header widget (see "Design philosophy" above). Because both headings
+go through the same method inside the same `RichLog`, with no widget-level
+padding of its own, they render at pixel-identical left margins — verified
+via `run_test()`: `pykaxe` (welcome) and a tool name both render at
+`x="12.2", y="44.4"` in an SVG snapshot, i.e. the same column, the same
+row-within-border. That consistency is a property of *not* duplicating the
+heading into a second widget, not something to maintain by hand-tuning
+padding across two different places.
 
 `RichLog.write()` accepts any Rich renderable, not only markup strings —
 `_write_heading` is the one place in the app that uses that directly
@@ -199,10 +204,9 @@ kill site actually set it.
 
 ```
 ┌──────────────────────────────────────────────┐
-│ #badge            "toolname · active"         │  ← 1 row, hidden unless a tool is loaded
-├──────────────────────────────────────────────┤
 │                                                │
 │ RichLog           scrolling output/log        │  ← fills all remaining vertical space
+│ (heading + banner both rendered in here)      │
 │                                                │
 ├──────────────────────────────────────────────┤
 │ #suggestions       (tool picker popup)         │  ← hidden unless typing "/..."
@@ -215,52 +219,17 @@ kill site actually set it.
 height: auto` — pinned to the bottom edge, only as tall as its (variable)
 contents. `Footer` docks itself independently (it has its own `dock:
 bottom` in its `DEFAULT_CSS`), so it isn't nested inside `#bottom`.
-`RichLog` has no explicit height, so it absorbs whatever space is left.
-There is no persistent widget shown while idle — the top slot is simply
-empty (`display: none`) until a tool is loaded.
+`RichLog` has no explicit height, so it absorbs whatever space is left —
+including the full height of the screen when idle, since there is no
+persistent header widget above it anymore.
 
-### 1. Badge (`#badge`) — the "header," when a tool is loaded
-
-There is no `Header` widget; this `Static` at the very top is the closest
-thing to one, and it is off by default.
-
-- **Hidden state:** `display: none`, zero height — most of the time this
-  row doesn't exist at all.
-- **Shown state:** appears the instant a tool is loaded (`update_badge()`),
-  reads `<tool> · active` or `<tool> · • running`.
-- **Style:** flat text on `BG` — no filled block, no border, no distinct
-  background at all. Text color carries the state: tool name via
-  `tool_name()` (bold `ACCENT`), state word `MUTED` for "active" or
-  `SUCCESS` with a `•` for "running" — reusing `SUCCESS` deliberately,
-  since green already means "this tool is live" for streamed stdout
-  elsewhere; this is the same meaning applied to a status word, not a new
-  one.
-  - **Why not a filled block or an elevated panel:** earlier drafts tried
-    a solid `ACCENT` block with hardcoded dark inverted text, then a
-    translucent tint, then a solid elevated `PANEL` fill — all read as a
-    second, competing "heading," visually fighting the `Rule`-based
-    heading that also appears (in `RichLog`) the moment a tool loads.
-    Consistency won: there's exactly one heading *mechanism* in this app
-    (`_write_heading`'s `Rule`), and `#badge` is a plain status line, not
-    a rival banner. Removing its background also directly serves "one
-    background color, borders stand out" — a distinct badge background
-    was itself one of the "many colors" being consolidated away.
-  - **A `height: 1` widget has no room for a border.** An earlier draft
-    added `border-bottom: solid {BORDER}` for a subtle separator from
-    `RichLog` below — that silently collapsed the badge's own content area
-    to zero height (`Size(height=0)`, confirmed via `run_test()`), since
-    the single available row went entirely to the border edge instead of
-    the text. If a divider is wanted here again, the badge's `height` has
-    to grow to accommodate it.
-- **Purpose:** the only persistent visual indicator of "which tool is
-  active/running" — useful since the RichLog scrolls the tool's own banner
-  out of view.
-
-### 2. Content section (`RichLog`)
+### 1. Content section (`RichLog`)
 
 The main output pane — every printed line (welcome text, tool banners,
 prompts, streamed subprocess output, error/status lines) goes here via
-`write_line()` / `write_line_to()` / `_write_heading()`.
+`write_line()` / `write_line_to()` / `_write_heading()`. This is the
+*entire* visible surface of the app above the input bar — there is no
+separate header/badge widget.
 
 - **Background:** `BG` (`ansi_default`).
 - **Border:** `round {BORDER}` always — this widget does not brighten on
@@ -287,8 +256,7 @@ prompts, streamed subprocess output, error/status lines) goes here via
     (`[bold]`, `[red]`) actually applied as styling.
   - `MUTED` via `info()`/`cancelled()` → pykaxe's own neutral chrome:
     hints, "cancelled — \<tool\>"
-  - `ACCENT` via `tool_name()` → tool names (welcome list, suggestions,
-    badge)
+  - `ACCENT` via `tool_name()` → tool names (welcome list, suggestions)
   - `SUCCESS` (green) via `success()` → lines streamed live from a running
     tool's stdout, plus `✓ <tool> finished` / `✓ copied — N lines`
   - `ERROR` (red) via `error()` → invalid input, failed actions, non-zero
@@ -296,11 +264,12 @@ prompts, streamed subprocess output, error/status lines) goes here via
   - `WARNING` (amber-yellow) via `warning()` → a caution that isn't a
     failure (e.g. a tool already running) — always prefixed `!`
   - A `Rule` via `_write_heading()` → the `pykaxe vX` welcome title
-    (`PRIMARY`) and each tool's banner (`ACCENT`)
+    (`PRIMARY`) and each tool's banner (`ACCENT`) — see "Headings" above
+    for why these two are pixel-aligned
 - **Scrollback cap:** `max_lines=MAX_OUTPUT_LINES` (2000) — old lines are
   dropped, not paginated.
 
-### 3. Tool picker popup (`#suggestions`)
+### 2. Tool picker popup (`#suggestions`)
 
 This is the thing that appears when you type `/`. It is an `OptionList`
 sitting directly above the `Input`, inside `#bottom`.
@@ -320,12 +289,9 @@ sitting directly above the `Input`, inside `#bottom`.
   above the Input.
 - **Highlight:** the focused/hovered option gets `background:
   {ACCENT_TINT}` — a translucent 30%-alpha wash of the tool-identity
-  color, not a solid fill. Previously this was a flat `{BORDER}` grey —
-  low-contrast enough that the "you're here" signal was easy to miss, and
-  disconnected from what's actually being selected (a tool). `ACCENT_TINT`
-  ties the highlight to the same amber that already means "tool"
-  everywhere else, at an alpha chosen to mirror Textual's own
-  default-theme convention for an unfocused list cursor
+  color, not a solid fill. Ties the highlight to the same amber that
+  already means "tool" everywhere else, at an alpha chosen to mirror
+  Textual's own default-theme convention for an unfocused list cursor
   (`block-cursor-blurred-background`, confirmed in `textual/design.py`).
   Only `color`/`background`/`text-style` apply to this component class —
   no `border`, confirmed against `OptionList.DEFAULT_CSS` in Textual's own
@@ -335,7 +301,7 @@ sitting directly above the `Input`, inside `#bottom`.
   this is the same code path as typing `/name` and hitting Enter in the
   Input; the popup is a discovery aid, not a separate flow.
 
-### 4. Input
+### 3. Input
 
 The single text-entry widget; every user action funnels through it (see
 `app.py`'s three-mode dispatch in `on_input_submitted`).
@@ -347,11 +313,11 @@ The single text-entry widget; every user action funnels through it (see
 - **Placeholder text is dynamic, not static** (`update_input_placeholder`):
   it always describes what typing + Enter will currently do —
   `"Type / to load a tool..."`, `"enter <arg-name> (ctrl+o to browse)..."`,
-  or `"<tool> is running — press esc to stop..."`. The placeholder is
-  effectively part of the design system: it's the app's only per-state
-  instructional text.
+  or `"<tool> is running — press esc to stop..."`. With no persistent
+  header widget in this app, the placeholder is the *only* place the
+  running/idle state is shown outside the log itself.
 
-### 5. Footer (Textual's built-in `Footer` widget)
+### 4. Footer (Textual's built-in `Footer` widget)
 
 `yield Footer(show_command_palette=False)` — not a hand-rolled
 `StatusBar`/`Button` row. Textual's real `Footer` reads key/description
@@ -427,7 +393,6 @@ within it.
 | Scrollbars (RichLog/#suggestions) | transparent | — | thumb `MUTED`, track transparent |
 | Scrollbars (actively scrolling) | — | thumb `FG` | — |
 | #suggestions option | bg `BG` | highlighted: bg `ACCENT_TINT` (30% alpha), `text-style: none` | same as highlighted |
-| #badge | hidden | flat text on `BG`, color-coded, shown | — |
 | File picker border | `FG` always | `FG` always | — |
 
 ## Where to change things
@@ -442,9 +407,11 @@ within it.
 - **Add a heading:** use `self._write_heading(title, copy_text)` with a
   `Text` built via `.append()` — don't hand-roll another plain markup
   title line for a new top-level context, and don't introduce a second
-  competing heading widget (see "Badge" above for why that was reverted).
-  Reserve it for genuine context transitions; using it for routine
-  messages would turn a signal into wallpaper.
+  widget to show it in. Every heading goes through this one method inside
+  `RichLog` specifically so margins stay identical without hand-tuning —
+  see "Design philosophy" above for why a separate badge widget was tried
+  and removed. Reserve it for genuine context transitions; using it for
+  routine messages would turn a signal into wallpaper.
 - **Change what a message means (info/success/warning/error/cancelled):**
   don't reach for a raw `f"[{COLOR}]...[/]"` string — use the matching
   helper (`info()`, `prompt()`, `success()`, `warning()`, `error()`,
@@ -459,11 +426,12 @@ within it.
   matching block to `Pykaxe.CSS` (or the widget's own `DEFAULT_CSS`, the
   pattern `FilePickerScreen` uses). Before adding a persistent
   header/status widget, check whether it's answering a question the user
-  already has another way to answer (placeholder text, the badge, streamed
-  output) — a `Digits`-based tool-count stat bar was tried and removed
-  this round for exactly that reason.
+  already has another way to answer (placeholder text, the heading itself,
+  streamed output) — a status badge and a `Digits`-based tool-count stat
+  bar were both tried and removed for exactly that reason; see
+  CHANGELOG.md for the history if reconsidering either.
 - **Change what a section shows/when:** the *content* of each widget
-  (badge text, placeholder text, suggestion rows, log lines) is driven
-  from Python methods (`update_badge`, `update_input_placeholder`,
-  `on_input_changed`, `write_line*`), not CSS — check there too if the
-  visible *behavior* (not just color) needs to change.
+  (placeholder text, suggestion rows, log lines) is driven from Python
+  methods (`update_input_placeholder`, `on_input_changed`, `write_line*`),
+  not CSS — check there too if the visible *behavior* (not just color)
+  needs to change.

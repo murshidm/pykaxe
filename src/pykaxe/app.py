@@ -78,8 +78,8 @@ overrides for every one of them. background/surface/panel are all BG
 (ansi_default) — confirmed via run_test() that Textual accepts
 "ansi_default" as a Theme background without error, so there's one
 background concept everywhere, not three. Widgets pykaxe defines itself
-(RichLog content, #badge, #suggestions, the file picker) keep using the
-plain constants above directly, same as before."""
+(RichLog content, #suggestions, the file picker) keep using the plain
+constants above directly, same as before."""
 
 
 def _alpha(hex_color: str, alpha: float) -> str:
@@ -301,13 +301,6 @@ class Pykaxe(App):
     Screen {{
         background: {BG};
     }}
-    #badge {{
-        display: none;
-        height: 1;
-        background: {BG};
-        content-align: left middle;
-        padding: 0 1;
-    }}
     RichLog {{
         background: {BG};
         border: round {BORDER};
@@ -388,7 +381,6 @@ class Pykaxe(App):
         self.theme = "pykaxe"
 
     def compose(self) -> ComposeResult:
-        yield Static("", id="badge")
         yield RichLog(markup=True, wrap=True, max_lines=MAX_OUTPUT_LINES)
         with Vertical(id="bottom"):
             yield OptionList(id="suggestions")
@@ -398,7 +390,6 @@ class Pykaxe(App):
     def on_mount(self) -> None:
         self.tools = discover_tools(self.tools_dir)
         self._show_welcome()
-        self.update_badge()
         self.update_input_placeholder()
         self._focus_input()
 
@@ -460,12 +451,16 @@ class Pykaxe(App):
     def _write_heading(self, title: Text, copy_text: str) -> None:
         """A quiet Rule anchors each new top-level context — the welcome
         banner, or a freshly loaded tool's banner — the same way the rest
-        of the app marks "what state it's in" with structure (a border, a
-        badge) rather than color alone. `style=BORDER` keeps the rule line
+        of the app marks "what state it's in" with structure (a border)
+        rather than color alone. `style=BORDER` keeps the rule line
         itself quiet/structural; the colored `title` Text carries the
         actual emphasis, same division of labor as `§5 Borders` elsewhere.
         Used sparingly — only at genuine context transitions — so it stays
-        a signal rather than becoming wallpaper.
+        a signal rather than becoming wallpaper. This is the only "what
+        state is the app in" indicator once a tool loads — no separate
+        badge widget anymore, so the tool name/description shown here and
+        the running-state placeholder text (`update_input_placeholder`)
+        are the full story.
 
         RichLog.write() accepts any Rich renderable, not just markup
         strings, so this bypasses write_line_to entirely — a Rule can't be
@@ -577,7 +572,6 @@ class Pykaxe(App):
         self._write_heading(title, copy_text)
         self.write_line("")
 
-        self.update_badge()
         if shell.pending_args:
             self.prompt_next_arg()
         else:
@@ -683,7 +677,6 @@ class Pykaxe(App):
             return
 
         shell.process = process
-        self.update_badge()
         self.update_input_placeholder()
         shell.runner_task = asyncio.create_task(self._run_and_pump(shell, process))
 
@@ -736,8 +729,6 @@ class Pykaxe(App):
         shell.kill_announced = False
 
         self.write_line_to(shell, "")
-        if shell is self.shell:
-            self.update_badge()
 
         shell.arg_index = 0
         shell.values = {}
@@ -838,7 +829,6 @@ class Pykaxe(App):
             self._show_welcome()
             self.write_line(cancelled(cancelled_tool))
             self.write_line("")
-            self.update_badge()
             self.update_input_placeholder()
 
     def action_scan_tools(self) -> None:
@@ -867,25 +857,6 @@ class Pykaxe(App):
         input_widget = self.query_one(Input)
         input_widget.value = str(path)
         input_widget.focus()
-
-
-    def update_badge(self) -> None:
-        """A quiet, flat status line — no filled block, no border of its
-        own — deliberately consistent with the welcome heading and every
-        other structural element in the app: color-coded text on the same
-        BG as everything else, not a competing colored bar fighting for
-        attention above the RichLog's own Rule-based headings. Running
-        reuses SUCCESS (green already means "this tool is live" for
-        streamed stdout — same meaning here, not a new one)."""
-        shell = self.shell
-        badge = self.query_one("#badge", Static)
-        if shell.tool:
-            state = f"[{SUCCESS}]• running[/]" if shell.process is not None else f"[{MUTED}]active[/]"
-            badge.update(f"{tool_name(shell.tool)} [{MUTED}]·[/] {state}")
-            badge.display = True
-        else:
-            badge.update("")
-            badge.display = False
 
 
 def run() -> None:

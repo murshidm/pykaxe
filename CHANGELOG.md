@@ -58,17 +58,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Textual's own built-in themes use for an unfocused list cursor
   (`block-cursor-blurred-background`, confirmed in Textual's installed
   source).
-- The status badge (shown while a tool is loaded/running) was a solid
-  amber block with hardcoded dark inverted text; it's now flat color-coded
-  text on the same background as everything else (amber tool name, grey
-  "active" or green "• running" — "running" reuses the same green that
-  already means "this tool is live" for streamed output elsewhere, not a
-  new meaning). Several intermediate treatments (a translucent tint, then
-  a solid elevated panel fill) were tried and reverted during this round —
-  each one read as a second heading competing with the `Rule`-based one
-  that already appears in the log the moment a tool loads. A `Digits`-based
-  tool-count stat bar, shown while idle, was also tried and removed as
-  unnecessary.
+- Removed the separate status badge widget that used to sit above the log
+  reading `<tool> · active` / `<tool> · • running`. Several visual
+  treatments for it were tried during this round (a solid amber block,
+  then a translucent tint, then a flat unstyled line) but every version
+  still read as a second heading competing with the `Rule`-based one that
+  already appears in the log the instant a tool loads, and its own
+  position/padding could never be made pixel-consistent with that heading
+  the way two things sharing one widget naturally are. Tool identity now
+  lives only in that one heading, plus the argument help text below it;
+  the running/idle state lives only in the Input's placeholder text. A
+  `Digits`-based tool-count stat bar, shown while idle, was also tried and
+  removed as unnecessary.
 - The welcome screen now shows the running version next to the `pykaxe`
   banner (e.g. `pykaxe v0.1.7`), so it's visible at a glance which release
   you're on.
