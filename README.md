@@ -101,9 +101,9 @@ python3 -m pipx ensurepath
 
 Run `pykaxe` — or `pipx run pykaxe` if you didn't install it permanently.
 
-On first run it asks where to keep your tools, creates that folder, seeds it
-with a few example tools, and remembers your choice in
-`~/.pykaxe/config.json`. Override it for a single run with the
+On first run it silently creates `~/Documents/pykaxe/scripts` for your tools,
+seeds it with a few example tools, and remembers your choice in
+`~/Documents/pykaxe/config.json`. Override it for a single run with the
 `PYKAXE_TOOLS_DIR` environment variable.
 
 Type `/` to see available tools, narrow the list by typing part of a name, and

@@ -50,8 +50,8 @@ Resolve the tools directory in this order, and write the file there
 directly (filename = `TOOL_NAME` + `.py`) — no confirmation step needed:
 
 1. `PYKAXE_TOOLS_DIR` environment variable, if set.
-2. The `tools_dir` value in `~/.pykaxe/config.json`, if that file exists.
-3. Otherwise `~/.pykaxe/tools` (create it if it doesn't exist yet).
+2. The `tools_dir` value in `~/Documents/pykaxe/config.json`, if that file exists.
+3. Otherwise `~/Documents/pykaxe/scripts` (create it if it doesn't exist yet).
 
 Do not run the script yourself to test it end-to-end unless the user asks —
 just make sure it parses and follows the contract above. It will appear in

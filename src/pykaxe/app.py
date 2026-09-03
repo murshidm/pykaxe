@@ -10,7 +10,7 @@ from collections import deque
 from pathlib import Path
 from types import ModuleType
 
-from pykaxe import config
+from pykaxe import __version__, config
 
 try:
     import resource
@@ -309,7 +309,7 @@ class Pykaxe(App):
         self.query_one(RichLog).clear()
 
     def _show_welcome(self) -> None:
-        self.write_line(f"[{WHITE}]pykaxe[/]")
+        self.write_line(f"[{WHITE}]pykaxe[/] [{MUTED}]v{__version__}[/]")
         self.write_line("")
         if self.tools:
             self.write_line(f"[{MUTED}]available tools[/]")
@@ -320,6 +320,10 @@ class Pykaxe(App):
                 if desc:
                     line += f"{' ' * (width - len(name))}  [{MUTED}]{escape_markup(desc)}[/]"
                 self.write_line(line)
+            self.write_line("")
+        else:
+            self.write_line(f"[{MUTED}]no tools found in {escape_markup(str(self.tools_dir))}[/]")
+            self.write_line(f"[{MUTED}]drop a .py tool in there, then press ctrl+s to re-scan[/]")
             self.write_line("")
         self.write_line(f"[{MUTED}]type / to load a tool[/]")
         self.write_line("")
@@ -706,13 +710,16 @@ class Pykaxe(App):
             self._kill_process(shell.process)
             self.write_line(f"[{MUTED}]interrupted[/]")
         elif self._awaiting_argument():
-            self.write_line(f"[{MUTED}]cancelled {shell.tool}[/]")
-            self.write_line("")
+            cancelled = shell.tool
             shell.tool = None
             shell.script = None
             shell.pending_args = []
             shell.arg_index = 0
             shell.values = {}
+            self._clear_screen()
+            self._show_welcome()
+            self.write_line(f"[{MUTED}]cancelled {cancelled}[/]")
+            self.write_line("")
             self.update_badge()
             self.update_input_placeholder()
 

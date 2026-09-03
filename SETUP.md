@@ -61,14 +61,9 @@ A plain text window opens by itself and pykaxe starts. **The first run can
 take a minute or two** with nothing visibly happening while it downloads
 pykaxe — that's normal, don't close it.
 
-Then it asks where to keep your tools:
-
-```
-Where should pykaxe store your tools? [/Users/you/.pykaxe/tools]:
-```
-
-Press Enter to accept the folder it suggests (on Windows it shows something
-like `C:\Users\you\.pykaxe\tools`).
+On first run it silently creates a tools folder for you — no prompt, nothing
+to confirm — and seeds it with a few example tools. See
+[Find your tools folder](#4-find-your-tools-folder) for where that is.
 
 **Check it works** — a few example tools ship with pykaxe:
 
@@ -83,15 +78,19 @@ a Mac.
 
 ## 4. Find your tools folder
 
-This is the one and only place your tools live. Its name starts with a dot,
-which means the computer hides it, so you can't click your way there:
+This is the one and only place your tools live:
 
-- **Mac:** open Finder, press `Cmd + Shift + G`, paste `~/.pykaxe/tools`,
-  press Enter. Drag the folder into Finder's sidebar so it's one click away
-  next time.
+- **Mac:** open Finder, press `Cmd + Shift + G`, paste
+  `~/Documents/pykaxe/scripts`, press Enter. Drag the folder into Finder's
+  sidebar so it's one click away next time.
 - **Windows:** open File Explorer, click the address bar, paste
-  `%USERPROFILE%\.pykaxe\tools`, press Enter. Right-click the folder and
-  choose **Pin to Quick access**.
+  `%USERPROFILE%\Documents\pykaxe\scripts`, press Enter. Right-click the
+  folder and choose **Pin to Quick access**.
+
+To confirm from a terminal instead, run `pykaxe tools-dir` — it prints the
+exact path. To use a different folder, set the `PYKAXE_TOOLS_DIR` environment
+variable before launching pykaxe (see `README.md#usage`); the choice made on
+first run is otherwise remembered in `~/Documents/pykaxe/config.json`.
 
 ## Saving a tool into that folder
 
@@ -100,12 +99,13 @@ When an AI gives you code, it has to be saved as a plain text file ending in
 
 - **Mac (TextEdit):** choose **Format → Make Plain Text** *before* pasting —
   otherwise it saves a formatted document pykaxe can't read. Then **File →
-  Save**, press `Cmd + Shift + G` in the save box, paste `~/.pykaxe/tools`,
-  name it e.g. `reverse.py`. If asked about the extension, choose **Use .py**.
+  Save**, press `Cmd + Shift + G` in the save box, paste
+  `~/Documents/pykaxe/scripts`, name it e.g. `reverse.py`. If asked about the
+  extension, choose **Use .py**.
 - **Windows (Notepad):** paste the code, then **File → Save as**. Paste
-  `%USERPROFILE%\.pykaxe\tools` into the address bar. Change **Save as type**
-  to **All Files** — otherwise Windows silently saves it as `reverse.py.txt`
-  and pykaxe won't see it. Name it `reverse.py`.
+  `%USERPROFILE%\Documents\pykaxe\scripts` into the address bar. Change
+  **Save as type** to **All Files** — otherwise Windows silently saves it as
+  `reverse.py.txt` and pykaxe won't see it. Name it `reverse.py`.
 
 ## If something didn't work
 

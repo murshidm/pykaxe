@@ -68,8 +68,8 @@ Code): resolve the tools directory yourself instead of asking the user to
 run `pykaxe add`:
 
 1. If the `PYKAXE_TOOLS_DIR` environment variable is set, use it.
-2. Otherwise read `tools_dir` from `~/.pykaxe/config.json`, if it exists.
-3. Otherwise default to `~/.pykaxe/tools` (create it if missing).
+2. Otherwise read `tools_dir` from `~/Documents/pykaxe/config.json`, if it exists.
+3. Otherwise default to `~/Documents/pykaxe/scripts` (create it if missing).
 
 Write the script directly into that directory. Filename should match
 `TOOL_NAME` with a `.py` extension.
