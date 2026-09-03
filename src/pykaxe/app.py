@@ -21,7 +21,8 @@ from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Input, OptionList, RichLog, Static
+from textual.screen import ModalScreen
+from textual.widgets import Button, DirectoryTree, Input, OptionList, RichLog, Static
 from textual.widgets.option_list import Option
 from rich.markup import escape as escape_markup
 from rich.text import Text
@@ -128,6 +129,50 @@ class StatusBar(Horizontal):
         yield Button(footer_label("ctrl+c", "quit"), id="quit", classes="footer-btn")
 
 
+class FilePickerScreen(ModalScreen[Path | None]):
+    """Modal file browser pushed with ctrl+o while pykaxe is prompting for a
+    Path-typed argument. Dismisses with the chosen path, or None on
+    escape/cancel — the caller decides what to do with the result, so this
+    screen never touches the Input or the shell itself.
+
+    No escape binding here: Pykaxe's own "escape" binding is priority=True,
+    which Textual always checks before a pushed screen ever sees the key —
+    so escape is handled centrally in Pykaxe.action_interrupt() instead."""
+
+    CSS = f"""
+    FilePickerScreen {{
+        align: center middle;
+    }}
+    #picker {{
+        width: 80%;
+        height: 80%;
+        background: {BG};
+        border: round {WHITE};
+    }}
+    #picker-title {{
+        height: 1;
+        padding: 0 1;
+        background: {BG};
+        color: {MUTED};
+    }}
+    FilePickerScreen DirectoryTree {{
+        background: {BG};
+    }}
+    """
+
+    def __init__(self, start_dir: Path) -> None:
+        super().__init__()
+        self.start_dir = start_dir
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="picker"):
+            yield Static("select a file — esc to cancel", id="picker-title")
+            yield DirectoryTree(str(self.start_dir))
+
+    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
+        self.dismiss(event.path)
+
+
 class Pykaxe(App):
     CSS = f"""
     Screen {{
@@ -217,6 +262,7 @@ class Pykaxe(App):
         Binding("ctrl+c", "quit", "Quit", priority=True),
         Binding("ctrl+y", "copy_output", "Copy output"),
         Binding("ctrl+s", "scan_tools", "Scan tools"),
+        Binding("ctrl+o", "browse_file", "Browse file"),
         # priority=True: this must win over whatever widget has focus (e.g.
         # the Input) so a runaway tool can always be killed immediately.
         Binding("escape", "interrupt", "Interrupt", priority=True),
@@ -240,6 +286,7 @@ class Pykaxe(App):
         self.tools = discover_tools(self.tools_dir)
         self._show_welcome()
         self.update_badge()
+        self.update_input_placeholder()
         self._focus_input()
 
     def _clear_screen(self) -> None:
@@ -265,11 +312,21 @@ class Pykaxe(App):
     def _focus_input(self) -> None:
         self.query_one(Input).focus()
 
+    def _modal_active(self) -> bool:
+        """True while a screen (e.g. the file picker) is pushed on top of
+        the main one. Every App-level click handler and non-priority
+        binding below assumes the base screen's widgets (Input, RichLog,
+        #suggestions) exist — they don't on a modal, so each of those must
+        stand down while one is active rather than crash with NoMatches."""
+        return len(self.screen_stack) > 1
+
     def on_click(self, event: events.Click) -> None:
         # The Input is the only thing worth typing into — whatever else got
         # clicked (the log, a suggestion, the interrupt button) has already
         # handled the click itself by the time this fires, so just make
         # sure a cursor is always waiting in the Input afterward.
+        if self._modal_active():
+            return
         self._focus_input()
 
     def write_line_to(self, shell: Shell, text: str) -> None:
@@ -280,9 +337,16 @@ class Pykaxe(App):
     def write_line(self, text: str) -> None:
         self.write_line_to(self.shell, text)
 
+    def _awaiting_argument(self) -> bool:
+        shell = self.shell
+        return shell.tool is not None and shell.arg_index < len(shell.pending_args)
+
     def on_input_changed(self, event: Input.Changed) -> None:
         suggestions = self.query_one("#suggestions", OptionList)
-        if not event.value.startswith("/"):
+        if self._awaiting_argument() or not event.value.startswith("/"):
+            # Mid argument-collection, "/" has no special meaning — it's
+            # just a character an absolute path can start with — so the
+            # tool-picker dropdown must stay out of the way here.
             suggestions.display = False
             return
 
@@ -313,7 +377,11 @@ class Pykaxe(App):
         self.query_one("#suggestions", OptionList).display = False
 
         shell = self.shell
-        if text.startswith("/"):
+        if self._awaiting_argument():
+            self.write_line(text)
+            self.write_line("")
+            await self.collect_argument(text)
+        elif text.startswith("/"):
             query = text[1:].strip()
             matches = fuzzy_filter(query, list(self.tools.keys()))
             if matches:
@@ -322,10 +390,6 @@ class Pykaxe(App):
                 self.write_line(text)
                 self.write_line(f"[{MUTED}]no such tool: {query}[/]")
                 self.write_line("")
-        elif shell.tool is not None and shell.arg_index < len(shell.pending_args):
-            self.write_line(text)
-            self.write_line("")
-            await self.collect_argument(text)
         elif shell.tool is None:
             self.write_line(f"[{MUTED}]select a tool first — type / to see available tools[/]")
             self.write_line("")
@@ -378,16 +442,37 @@ class Pykaxe(App):
         else:
             await self.run_tool(shell)
 
-    def prompt_next_arg(self) -> None:
-        shell = self.shell
-        if not shell.pending_args:
-            return
-        action = shell.pending_args[shell.arg_index]
+    def _arg_prompt_text(self, action: argparse.Action) -> str:
         prompt = f"enter {action.dest}"
         if action.choices:
             prompt += f" ({'/'.join(str(c) for c in action.choices)})"
         if action.default is not None and action.default is not argparse.SUPPRESS:
             prompt += f" [{action.default}]"
+        if action.type is Path:
+            prompt += " (ctrl+o to browse)"
+        return prompt
+
+    def update_input_placeholder(self) -> None:
+        """Keeps the Input's placeholder tied to what typing into it will
+        actually do right now, instead of a static hint that's wrong
+        whenever a tool is mid argument-collection or running."""
+        shell = self.shell
+        input_widget = self.query_one(Input)
+        if shell.process is not None:
+            input_widget.placeholder = f"{shell.tool} is running — press esc to stop..."
+        elif shell.tool is not None and shell.arg_index < len(shell.pending_args):
+            action = shell.pending_args[shell.arg_index]
+            input_widget.placeholder = self._arg_prompt_text(action) + "..."
+        else:
+            input_widget.placeholder = "Type / to load a tool..."
+
+    def prompt_next_arg(self) -> None:
+        self.update_input_placeholder()
+        shell = self.shell
+        if not shell.pending_args:
+            return
+        action = shell.pending_args[shell.arg_index]
+        prompt = self._arg_prompt_text(action)
         self.write_line(f"[{MUTED}]{prompt}:[/]")
         if action.help:
             self.write_line(f"[{MUTED}]{escape_markup(action.help)}[/]")
@@ -452,6 +537,7 @@ class Pykaxe(App):
 
         shell.process = process
         self.update_badge()
+        self.update_input_placeholder()
         shell.runner_task = asyncio.create_task(self._run_and_pump(shell, process))
 
     async def _run_and_pump(self, shell: Shell, process: asyncio.subprocess.Process) -> None:
@@ -538,6 +624,8 @@ class Pykaxe(App):
         self._focus_input()
 
     def action_copy_output(self) -> None:
+        if self._modal_active():
+            return
         shell = self.shell
         text = "\n".join(Text.from_markup(line).plain for line in shell.lines)
         if not text:
@@ -580,6 +668,14 @@ class Pykaxe(App):
         self.exit()
 
     def action_interrupt(self) -> None:
+        # This binding is priority=True, so it's checked before a pushed
+        # screen (e.g. the file picker) ever sees the key — closing that
+        # screen has to happen here rather than via its own binding, which
+        # would never be reached.
+        if self._modal_active():
+            self.screen.dismiss(None)
+            return
+
         suggestions = self.query_one("#suggestions", OptionList)
         if suggestions.display:
             suggestions.display = False
@@ -588,11 +684,43 @@ class Pykaxe(App):
         if shell.process is not None:
             self._kill_process(shell.process)
             self.write_line(f"[{MUTED}]interrupted[/]")
+        elif self._awaiting_argument():
+            self.write_line(f"[{MUTED}]cancelled {shell.tool}[/]")
+            self.write_line("")
+            shell.tool = None
+            shell.script = None
+            shell.pending_args = []
+            shell.arg_index = 0
+            shell.values = {}
+            self.update_badge()
+            self.update_input_placeholder()
 
     def action_scan_tools(self) -> None:
+        if self._modal_active():
+            return
         self.tools = discover_tools(self.tools_dir)
         self.write_line(f"[{MUTED}]scanned {len(self.tools)} tool(s)[/]")
         self.write_line("")
+
+    def action_browse_file(self) -> None:
+        if self._modal_active():
+            return
+        shell = self.shell
+        if shell.tool is None or shell.arg_index >= len(shell.pending_args):
+            return
+        action = shell.pending_args[shell.arg_index]
+        if action.type is not Path:
+            return
+        documents = Path.home() / "Documents"
+        start_dir = documents if documents.is_dir() else Path.home()
+        self.push_screen(FilePickerScreen(start_dir), self._on_file_picked)
+
+    def _on_file_picked(self, path: Path | None) -> None:
+        if path is None:
+            return
+        input_widget = self.query_one(Input)
+        input_widget.value = str(path)
+        input_widget.focus()
 
 
     def update_badge(self) -> None:

@@ -44,6 +44,9 @@ if __name__ == "__main__":
 - `build_parser()` should use `choices=[...]` and `default=...` where it
   makes sense — pykaxe shows both to the user when prompting for that
   argument.
+- Use `type=Path` (from `pathlib`) for any argument that takes a file path.
+  pykaxe shows a "browse" hint for these and lets the user pick a file from
+  a directory tree (ctrl+o) instead of typing the path by hand.
 - `main()` returns `0` on success, non-zero on failure, and prints its
   result to stdout.
 
