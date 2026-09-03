@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The TUI now gives every feedback message a distinct outcome color instead
+  of rendering all of them in the same muted grey: errors (invalid input,
+  failed tool start, non-zero exit, resource-limit kills) are red and
+  prefixed `×`, cautions (a tool already running) are amber-yellow and
+  prefixed `!`, and successful actions (a tool finishing cleanly, copying
+  output) are green and prefixed `✓`. A clean tool exit previously left the
+  log silent with no indication the run had finished; it now prints
+  `✓ <tool> finished`. Internally, palette constants were renamed
+  (`WHITE`→`FG`, `TOOL`→`ACCENT`, `RESULT`→`SUCCESS`) and two new tokens
+  (`ERROR`, `WARNING`) were added, with all feedback strings routed through
+  new `info()/success()/warning()/error()/cancelled()/tool_name()` helpers
+  in `app.py` rather than ad-hoc inline markup.
 - The welcome screen now shows the running version next to the `pykaxe`
   banner (e.g. `pykaxe v0.1.7`), so it's visible at a glance which release
   you're on.
