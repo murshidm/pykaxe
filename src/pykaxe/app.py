@@ -664,7 +664,7 @@ class Pykaxe(App):
                 await asyncio.wait_for(self.shell.runner_task, timeout=5)
 
         self.write_line(f"[{MUTED}]closing pykaxe...[/]")
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         self.exit()
 
     def action_interrupt(self) -> None:
@@ -736,7 +736,7 @@ class Pykaxe(App):
 
 
 def run() -> None:
-    Pykaxe(config.ensure_tools_dir()).run()
+    Pykaxe(config.resolve_tools_dir()).run()
 
 
 if __name__ == "__main__":
