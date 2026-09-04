@@ -1,11 +1,23 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/murshidm/pykaxe/main/assets/logo.svg" alt="pykaxe" width="50">
+
 # pykaxe
 
-A terminal UI for discovering and running small Python CLI tools.
+**Ask an AI for a tool. Get a TUI that runs it.**
 
 `pykaxe` scans a tools directory you choose for standalone Python scripts,
 lets you search for them and launch them from a single prompt, and streams
 their output live — with sandboxing (memory/CPU/runtime limits, output caps)
 so a runaway tool can't take the terminal down with it.
+
+[![CI](https://github.com/murshidm/pykaxe/actions/workflows/ci.yml/badge.svg)](https://github.com/murshidm/pykaxe/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/pykaxe?color=3B6EA5)](https://pypi.org/project/pykaxe/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-3B6EA5.svg)](LICENSE)
+
+[Quick Start](#quick-start) · [Install](#install) · [Usage](#usage) · [Writing a tool by hand](#writing-a-tool-by-hand) · [Contributing](#contributing)
+
+</div>
 
 You don't write the tools yourself — you ask an AI chatbot for them in plain
 English and drop what it gives you into a folder.
