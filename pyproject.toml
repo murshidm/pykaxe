@@ -27,7 +27,10 @@ classifiers = [
     "Topic :: Terminals",
 ]
 dependencies = [
-    "textual>=0.60",
+    # >=0.86 required for the Theme system (App.register_theme/App.theme,
+    # textual.theme.Theme) used in app.py to register PYKAXE_THEME —
+    # confirmed against Textual's own CHANGELOG.md ([0.86.0], 2024-11-16).
+    "textual>=0.86",
     "rich>=13.0",
 ]
 

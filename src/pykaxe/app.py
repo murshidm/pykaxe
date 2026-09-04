@@ -22,17 +22,80 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DirectoryTree, Input, OptionList, RichLog, Static
+from textual.theme import Theme
+from textual.widgets import (
+    DirectoryTree,
+    Footer,
+    Input,
+    OptionList,
+    RichLog,
+    Static,
+)
 from textual.widgets.option_list import Option
 from rich.markup import escape as escape_markup
+from rich.rule import Rule
 from rich.text import Text
 
-WHITE = "#f2f2f2"
+# Palette: one background, borrowed from the terminal (BG = "ansi_default"),
+# not an app-owned hex fill — an earlier version of this round tried a
+# solid Dracula-style background plus a separate elevated PANEL tone; that
+# added more distinct background colors than the app needed and made the
+# borders/Rule dividers (the app's actual structural language) compete
+# with filled color blocks instead of standing out against a neutral
+# field. BORDER stays a plain neutral grey for the same reason — it needs
+# to read clearly against *any* terminal background, not just one specific
+# hex tone. PRIMARY/ACCENT/SUCCESS/ERROR/WARNING are unaffected; those are
+# foreground/text colors, not backgrounds, and terminal-transparency never
+# applied to them.
+FG = "#f2f2f2"
 MUTED = "#8a8a8a"
 BORDER = "#3a3a3a"
 BG = "ansi_default"
-RESULT = "#7ee787"
-TOOL = "#f2c94c"
+PRIMARY = "#bd93f9"  # app/brand identity (headings), distinct from ACCENT,
+# which stays reserved for "this is a tool" and nothing else
+SUCCESS = "#7ee787"
+ACCENT = "#f2c94c"
+ERROR = "#e5534b"
+WARNING = "#e5c07b"
+
+PYKAXE_THEME = Theme(
+    name="pykaxe",
+    primary=PRIMARY,
+    accent=ACCENT,
+    foreground=FG,
+    background=BG,
+    surface=BG,
+    panel=BG,
+    success=SUCCESS,
+    warning=WARNING,
+    error=ERROR,
+    dark=True,
+)
+"""Registered in Pykaxe.__init__ so built-in widgets we adopt (Footer)
+pick up the same palette automatically via their own `$primary` /
+`$foreground` / etc. CSS variables, instead of needing hand-written CSS
+overrides for every one of them. background/surface/panel are all BG
+(ansi_default) — confirmed via run_test() that Textual accepts
+"ansi_default" as a Theme background without error, so there's one
+background concept everywhere, not three. Widgets pykaxe defines itself
+(RichLog content, #suggestions, the file picker) keep using the plain
+constants above directly, same as before."""
+
+
+def _alpha(hex_color: str, alpha: float) -> str:
+    """Textual CSS has no `color 30%` shorthand — alpha has to be baked
+    into an rgba()/hex-with-alpha value up front (confirmed against
+    Textual's own <color> CSS type reference)."""
+    r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+# Textual's own built-in themes highlight an unfocused list cursor with the
+# primary color at ~30% alpha rather than a solid block (see
+# block-cursor-blurred-background in textual/design.py) — ACCENT_TINT
+# mirrors that same restraint for our suggestion list, using our own
+# tool-identity color instead of a generic "primary".
+ACCENT_TINT = _alpha(ACCENT, 0.3)
 
 # Protection limits for running tools. Tool scripts are user-authored and
 # untrusted, so every guard here lives on the app side rather than relying
@@ -43,11 +106,60 @@ MAX_TOOL_MEMORY_BYTES = 256 * 1024 * 1024  # RLIMIT_AS ceiling for a tool proces
 MAX_TOOL_CPU_SECONDS = 120  # RLIMIT_CPU ceiling; catches tight busy-loops fast
 MAX_TOOL_RUNTIME_SECONDS = 30 * 60  # wall-clock safety net for polling loops
 
+# Below this terminal width, the right-docked "pykaxe" corner label (see
+# #app-label CSS / Pykaxe._update_app_label) would start to visually
+# collide with Footer's own left-packed keybinding list instead of
+# sharing the row cleanly — measured empirically via run_test() at
+# several widths against the current 4-binding footer.
+FOOTER_LABEL_MIN_WIDTH = 70
+
 POSIX = sys.platform != "win32"
 
 
-def footer_label(key: str, label: str) -> str:
-    return f"[{WHITE}]{escape_markup(f'[{key}]')}[/] [{MUTED}]{label}[/]"
+# Semantic output helpers (DESIGN.md §"output semantics"): every pykaxe
+# feedback line goes through one of these instead of an ad-hoc f-string, so
+# what a message *means* (info/success/warning/error/cancelled) is decided
+# once here rather than re-decided — inconsistently — at each call site.
+def info(text: str) -> str:
+    return f"[{MUTED}]{text}[/]"
+
+
+def prompt(text: str) -> str:
+    """An argument prompt ("enter text:") — what requires action next, as
+    opposed to the MUTED help line that may follow it. FG + a `›` lead-in
+    keeps it one clear step above `info()` without going all the way to
+    bold, which would get shouty across a tool with several arguments in a
+    row."""
+    return f"[{FG}]› {text}[/]"
+
+
+def success(text: str) -> str:
+    return f"[{SUCCESS}]✓ {text}[/]"
+
+
+def warning(text: str) -> str:
+    return f"[{WARNING}]! {text}[/]"
+
+
+def error(text: str) -> str:
+    return f"[{ERROR}]× {text}[/]"
+
+
+def cancelled(text: str) -> str:
+    return f"[{MUTED}]cancelled — {text}[/]"
+
+
+def tool_name(name: str) -> str:
+    return f"[{ACCENT}]{escape_markup(name)}[/]"
+
+
+def user_input(text: str) -> str:
+    """What the user just typed, echoed back into the log. FG makes it read
+    as a third voice distinct from pykaxe's own MUTED chrome and a tool's
+    SUCCESS-colored stdout. escape_markup is required here, not decorative:
+    without it, a submitted value containing "[" would be parsed as Rich
+    markup instead of shown literally."""
+    return f"[{FG}]{escape_markup(text)}[/]"
 
 
 def fuzzy_filter(query: str, names: list[str]) -> list[str]:
@@ -119,14 +231,11 @@ class Shell:
         self.values: dict[str, str] = {}
         self.process: asyncio.subprocess.Process | None = None
         self.runner_task: asyncio.Task | None = None
-
-
-class StatusBar(Horizontal):
-    def compose(self) -> ComposeResult:
-        yield Button(footer_label("esc", "interrupt"), id="interrupt", classes="footer-btn")
-        yield Button(footer_label("ctrl+y", "copy"), id="copy_output", classes="footer-btn")
-        yield Button(footer_label("ctrl+s", "scan"), id="scan_tools", classes="footer-btn")
-        yield Button(footer_label("ctrl+c", "quit"), id="quit", classes="footer-btn")
+        # Set by whichever pykaxe-initiated kill site (interrupt/quit/
+        # watchdog) already printed its own explanation for why the process
+        # is dying, so _run_and_pump's completion tail doesn't also print a
+        # second, redundant line for the same termination.
+        self.kill_announced: bool = False
 
 
 class FilePickerScreen(ModalScreen[Path | None]):
@@ -151,7 +260,7 @@ class FilePickerScreen(ModalScreen[Path | None]):
         width: 80%;
         height: 80%;
         background: {BG};
-        border: round {WHITE};
+        border: round {FG};
     }}
     #picker-title {{
         height: 1;
@@ -189,18 +298,15 @@ class FilePickerScreen(ModalScreen[Path | None]):
 
 
 class Pykaxe(App):
+    # pykaxe doesn't design around Textual's generic command palette (theme
+    # switching, its own screenshot action, etc.) — it isn't part of the
+    # tested feature set documented here, so it stays off rather than
+    # exposing an unreviewed surface behind an undocumented ctrl+p.
+    ENABLE_COMMAND_PALETTE = False
+
     CSS = f"""
     Screen {{
         background: {BG};
-    }}
-    #badge {{
-        display: none;
-        height: 1;
-        background: {TOOL};
-        color: #1a1a1a;
-        content-align: left middle;
-        padding: 0 1;
-        text-style: bold;
     }}
     RichLog {{
         background: {BG};
@@ -211,44 +317,30 @@ class Pykaxe(App):
         scrollbar-background-hover: {BG};
         scrollbar-color-hover: {MUTED};
         scrollbar-background-active: {BG};
-        scrollbar-color-active: {WHITE};
-    }}
-    Button {{
-        background: {BG};
-        border: solid {BORDER};
-        text-style: none;
-    }}
-    Button:hover {{
-        background: {BG};
-        border: solid {WHITE};
-        text-style: none;
-    }}
-    Button:focus {{
-        text-style: none;
+        scrollbar-color-active: {FG};
     }}
     #bottom {{
         dock: bottom;
         height: auto;
         background: {BG};
     }}
+    #footer-row {{
+        height: 1;
+        background: {BG};
+    }}
+    #app-label {{
+        dock: right;
+        width: auto;
+        color: {MUTED};
+        background: {BG};
+        padding: 0 1;
+    }}
     Input {{
         background: {BG};
         border: round {BORDER};
     }}
     Input:focus {{
-        border: round {WHITE};
-    }}
-    StatusBar {{
-        height: 1;
-        background: {BG};
-        padding: 0 1;
-    }}
-    .footer-btn {{
-        min-width: 0;
-        height: 1;
-        background: {BG};
-        border: none;
-        margin-right: 2;
+        border: round {FG};
     }}
     #suggestions {{
         display: none;
@@ -262,25 +354,40 @@ class Pykaxe(App):
         scrollbar-background-hover: {BG};
         scrollbar-color-hover: {MUTED};
         scrollbar-background-active: {BG};
-        scrollbar-color-active: {WHITE};
+        scrollbar-color-active: {FG};
     }}
     OptionList {{
         background: {BG};
     }}
     OptionList > .option-list--option-highlighted {{
-        background: {BORDER};
+        background: {ACCENT_TINT};
         text-style: none;
     }}
     """
 
     BINDINGS = [
-        Binding("ctrl+c", "quit", "Quit", priority=True),
-        Binding("ctrl+y", "copy_output", "Copy output"),
-        Binding("ctrl+s", "scan_tools", "Scan tools"),
-        Binding("ctrl+o", "browse_file", "Browse file"),
+        Binding("ctrl+c", "quit", "Quit", priority=True, tooltip="Stop any running tool and exit"),
+        Binding("ctrl+y", "copy_output", "Copy", tooltip="Copy the visible output to your clipboard"),
+        Binding("ctrl+s", "scan_tools", "Scan", tooltip="Re-scan the tools directory for new tools"),
+        Binding(
+            "ctrl+o",
+            "browse_file",
+            "Browse file",
+            show=False,  # contextual (only while collecting a Path argument), not a standing shortcut
+            tooltip="Browse for a file",
+        ),
         # priority=True: this must win over whatever widget has focus (e.g.
         # the Input) so a runaway tool can always be killed immediately.
-        Binding("escape", "interrupt", "Interrupt", priority=True),
+        # key_display: Footer would otherwise print the raw key id
+        # ("escape") instead of the short form everyone actually calls it.
+        Binding(
+            "escape",
+            "interrupt",
+            "Interrupt",
+            key_display="esc",
+            priority=True,
+            tooltip="Stop the running tool, or cancel argument entry",
+        ),
     ]
 
     def __init__(self, tools_dir: Path) -> None:
@@ -288,44 +395,66 @@ class Pykaxe(App):
         self.tools_dir = tools_dir
         self.shell = Shell()
         self.tools: dict[str, ModuleType] = {}
+        self.register_theme(PYKAXE_THEME)
+        self.theme = "pykaxe"
 
     def compose(self) -> ComposeResult:
-        yield Static("", id="badge")
         yield RichLog(markup=True, wrap=True, max_lines=MAX_OUTPUT_LINES)
         with Vertical(id="bottom"):
             yield OptionList(id="suggestions")
             yield Input(placeholder="Type / to load a tool...")
-            yield StatusBar()
+            with Horizontal(id="footer-row"):
+                yield Footer(show_command_palette=False)
+                yield Static("pykaxe", id="app-label")
 
     def on_mount(self) -> None:
         self.tools = discover_tools(self.tools_dir)
         self._show_welcome()
-        self.update_badge()
         self.update_input_placeholder()
         self._focus_input()
+        self._update_app_label()
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._update_app_label(event.size.width)
+
+    def _update_app_label(self, width: int | None = None) -> None:
+        """The small "pykaxe" corner label docks to the right of Footer's
+        own row (see #app-label CSS) rather than overlaying it, so it never
+        blocks a footer key click — but Footer's keys are left-packed and
+        the label is right-docked, so on a narrow enough terminal the two
+        would visually collide instead of gracefully sharing the row.
+        FOOTER_LABEL_MIN_WIDTH is a conservative measured threshold (the
+        real footer's 4 keys end around column 42 at full width; overlap
+        was observed starting around column 45-50 in run_test() at
+        various sizes) — below it, hide the label rather than let it
+        clip/cover a real shortcut."""
+        self.query_one("#app-label", Static).display = (width or self.size.width) >= FOOTER_LABEL_MIN_WIDTH
 
     def _clear_screen(self) -> None:
         self.shell.lines.clear()
         self.query_one(RichLog).clear()
 
     def _show_welcome(self) -> None:
-        self.write_line(f"[{WHITE}]pykaxe[/] [{MUTED}]v{__version__}[/]")
+        title = Text()
+        title.append("pykaxe", style=f"bold {PRIMARY}")
+        title.append(f" v{__version__}", style=MUTED)
+        self._write_heading(title, f"pykaxe v{__version__}")
         self.write_line("")
         if self.tools:
-            self.write_line(f"[{MUTED}]available tools[/]")
+            self.write_line(info("available tools"))
             width = max(len(name) for name in self.tools)
             for name in sorted(self.tools):
                 desc = getattr(self.tools[name], "TOOL_DESCRIPTION", "")
-                line = f"  [{TOOL}]/{escape_markup(name)}[/]"
+                line = f"  {tool_name('/' + name)}"
                 if desc:
                     line += f"{' ' * (width - len(name))}  [{MUTED}]{escape_markup(desc)}[/]"
                 self.write_line(line)
             self.write_line("")
         else:
-            self.write_line(f"[{MUTED}]no tools found in {escape_markup(str(self.tools_dir))}[/]")
-            self.write_line(f"[{MUTED}]drop a .py tool in there, then press ctrl+s to re-scan[/]")
+            self.write_line(info(f"no tools found in {escape_markup(str(self.tools_dir))}"))
+            self.write_line(info("drop a .py tool in there, then press ctrl+s to re-scan"))
             self.write_line("")
-        self.write_line(f"[{MUTED}]type / to load a tool[/]")
+        self.write_line(info("type / to load a tool"))
         self.write_line("")
 
     def _focus_input(self) -> None:
@@ -356,6 +485,28 @@ class Pykaxe(App):
     def write_line(self, text: str) -> None:
         self.write_line_to(self.shell, text)
 
+    def _write_heading(self, title: Text, copy_text: str) -> None:
+        """A quiet Rule anchors each new top-level context — the welcome
+        banner, or a freshly loaded tool's banner — the same way the rest
+        of the app marks "what state it's in" with structure (a border)
+        rather than color alone. `style=BORDER` keeps the rule line
+        itself quiet/structural; the colored `title` Text carries the
+        actual emphasis, same division of labor as `§5 Borders` elsewhere.
+        Used sparingly — only at genuine context transitions — so it stays
+        a signal rather than becoming wallpaper. This is the only "what
+        state is the app in" indicator once a tool loads — no separate
+        badge widget anymore, so the tool name/description shown here and
+        the running-state placeholder text (`update_input_placeholder`)
+        are the full story.
+
+        RichLog.write() accepts any Rich renderable, not just markup
+        strings, so this bypasses write_line_to entirely — a Rule can't be
+        expressed as a markup string. shell.lines still gets a plain-text
+        `copy_text` so ctrl+y keeps working; the decorative dashes aren't
+        worth reproducing in copied text, only the title's content is."""
+        self.shell.lines.append(copy_text)
+        self.query_one(RichLog).write(Rule(title=title, style=BORDER, align="left"))
+
     def _awaiting_argument(self) -> bool:
         shell = self.shell
         return shell.tool is not None and shell.arg_index < len(shell.pending_args)
@@ -376,7 +527,7 @@ class Pykaxe(App):
             return
         for name in matches[:8]:
             desc = getattr(self.tools[name], "TOOL_DESCRIPTION", "")
-            label = f"[{TOOL}]{escape_markup(name)}[/]"
+            label = tool_name(name)
             if desc:
                 label += f": {escape_markup(desc)}"
             suggestions.add_option(Option(label, id=name))
@@ -397,7 +548,7 @@ class Pykaxe(App):
 
         shell = self.shell
         if self._awaiting_argument():
-            self.write_line(text)
+            self.write_line(user_input(text))
             self.write_line("")
             await self.collect_argument(text)
         elif text.startswith("/"):
@@ -406,30 +557,30 @@ class Pykaxe(App):
             if matches:
                 await self.load_tool(matches[0])
             else:
-                self.write_line(text)
-                self.write_line(f"[{MUTED}]no such tool: {query}[/]")
+                self.write_line(user_input(text))
+                self.write_line(error(f"no such tool: {query}"))
                 self.write_line("")
         elif shell.tool is None:
-            self.write_line(f"[{MUTED}]select a tool first — type / to see available tools[/]")
+            self.write_line(info("select a tool first — type / to see available tools"))
             self.write_line("")
         else:
-            self.write_line(text)
+            self.write_line(user_input(text))
             self.write_line("")
 
     async def load_tool(self, name: str) -> None:
         shell = self.shell
         if shell.process is not None:
-            self.write_line(f"[{MUTED}]a tool is running in this shell — press esc to stop it first[/]")
+            self.write_line(warning("a tool is running in this shell — press esc to stop it first"))
             self.write_line("")
             return
 
         module = self.tools.get(name)
         if module is None:
-            self.write_line(f"[{MUTED}]no such tool: {name}[/]")
+            self.write_line(error(f"no such tool: {name}"))
             self.write_line("")
             return
         if not hasattr(module, "build_parser"):
-            self.write_line(f"[{TOOL}]{escape_markup(name)}[/] [{MUTED}]has no build_parser()[/]")
+            self.write_line(error(f"{name} has no build_parser()"))
             self.write_line("")
             return
 
@@ -449,13 +600,15 @@ class Pykaxe(App):
         self._clear_screen()
 
         desc = getattr(module, "TOOL_DESCRIPTION", "")
-        banner = f"[{TOOL}]{escape_markup(name)}[/]"
+        title = Text()
+        title.append(name, style=f"bold {ACCENT}")
+        copy_text = name
         if desc:
-            banner += f" [{MUTED}]— {escape_markup(desc)}[/]"
-        self.write_line(banner)
+            title.append(f" — {desc}", style=MUTED)
+            copy_text += f" — {desc}"
+        self._write_heading(title, copy_text)
         self.write_line("")
 
-        self.update_badge()
         if shell.pending_args:
             self.prompt_next_arg()
         else:
@@ -491,10 +644,10 @@ class Pykaxe(App):
         if not shell.pending_args:
             return
         action = shell.pending_args[shell.arg_index]
-        prompt = self._arg_prompt_text(action)
-        self.write_line(f"[{MUTED}]{prompt}:[/]")
+        arg_prompt = escape_markup(self._arg_prompt_text(action))
+        self.write_line(prompt(f"{arg_prompt}:"))
         if action.help:
-            self.write_line(f"[{MUTED}]{escape_markup(action.help)}[/]")
+            self.write_line(info(escape_markup(action.help)))
         self.write_line("")
 
     async def collect_argument(self, value: str) -> None:
@@ -507,14 +660,14 @@ class Pykaxe(App):
             value = str(action.default)
 
         if not value:
-            self.write_line(f"[{MUTED}]{action.dest} is required — enter a value[/]")
+            self.write_line(error(f"{action.dest} is required — enter a value"))
             self.write_line("")
             self.prompt_next_arg()
             return
 
         if action.choices and value not in [str(c) for c in action.choices]:
             choices = ", ".join(str(c) for c in action.choices)
-            self.write_line(f"[{MUTED}]must be one of: {choices}[/]")
+            self.write_line(error(f"must be one of: {choices}"))
             self.write_line("")
             self.prompt_next_arg()
             return
@@ -529,7 +682,7 @@ class Pykaxe(App):
 
     async def run_tool(self, shell: Shell) -> None:
         if shell.process is not None:
-            self.write_line(f"[{MUTED}]a tool is already running in this shell — press esc to stop it first[/]")
+            self.write_line(warning("a tool is already running in this shell — press esc to stop it first"))
             self.write_line("")
             return
 
@@ -556,12 +709,11 @@ class Pykaxe(App):
                 **kwargs,
             )
         except Exception as exc:
-            self.write_line(f"[{MUTED}]failed to start {shell.tool}: {exc}[/]")
+            self.write_line(error(f"failed to start {shell.tool} — {exc}"))
             self.write_line("")
             return
 
         shell.process = process
-        self.update_badge()
         self.update_input_placeholder()
         shell.runner_task = asyncio.create_task(self._run_and_pump(shell, process))
 
@@ -586,7 +738,7 @@ class Pykaxe(App):
                 total_bytes += len(line)
                 text = line.decode(errors="replace").rstrip("\n")
                 if text:
-                    self.write_line_to(shell, f"[{RESULT}]{escape_markup(text)}[/]")
+                    self.write_line_to(shell, f"[{SUCCESS}]{escape_markup(text)}[/]")
                 else:
                     self.write_line_to(shell, "")
                 if total_bytes > MAX_OUTPUT_BYTES:
@@ -604,13 +756,16 @@ class Pykaxe(App):
         shell.runner_task = None
 
         if killed_reason:
-            self.write_line_to(shell, f"[{MUTED}]tool killed: {killed_reason}[/]")
-        elif returncode not in (0, None, -9, -15):
-            self.write_line_to(shell, f"[{MUTED}]exited with code {returncode}[/]")
+            self.write_line_to(shell, error(f"{shell.tool} killed — {killed_reason}"))
+        elif shell.kill_announced:
+            pass  # interrupt/quit/watchdog already explained this termination
+        elif returncode not in (0, None):
+            self.write_line_to(shell, error(f"{shell.tool} failed — exit {returncode}"))
+        elif returncode == 0:
+            self.write_line_to(shell, success(f"{shell.tool} finished"))
+        shell.kill_announced = False
 
         self.write_line_to(shell, "")
-        if shell is self.shell:
-            self.update_badge()
 
         shell.arg_index = 0
         shell.values = {}
@@ -620,8 +775,9 @@ class Pykaxe(App):
     async def _watchdog(self, shell: Shell, process: asyncio.subprocess.Process) -> None:
         await asyncio.sleep(MAX_TOOL_RUNTIME_SECONDS)
         self.write_line_to(
-            shell, f"[{MUTED}]tool killed: exceeded {MAX_TOOL_RUNTIME_SECONDS}s runtime limit[/]"
+            shell, error(f"{shell.tool} killed — exceeded {MAX_TOOL_RUNTIME_SECONDS}s runtime limit")
         )
+        shell.kill_announced = True
         self._kill_process(process)
 
     def _kill_process(self, process: asyncio.subprocess.Process) -> None:
@@ -636,25 +792,13 @@ class Pykaxe(App):
         with contextlib.suppress(ProcessLookupError):
             process.kill()
 
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "interrupt":
-            self.action_interrupt()
-        elif event.button.id == "copy_output":
-            self.action_copy_output()
-        elif event.button.id == "scan_tools":
-            self.action_scan_tools()
-        elif event.button.id == "quit":
-            await self.action_quit()
-            return
-        self._focus_input()
-
     def action_copy_output(self) -> None:
         if self._modal_active():
             return
         shell = self.shell
         text = "\n".join(Text.from_markup(line).plain for line in shell.lines)
         if not text:
-            self.write_line(f"[{MUTED}]nothing to copy[/]")
+            self.write_line(info("nothing to copy"))
             self.write_line("")
             return
 
@@ -665,13 +809,13 @@ class Pykaxe(App):
             try:
                 subprocess.run(["pbcopy"], input=text.encode(), check=True)
             except (OSError, subprocess.CalledProcessError) as exc:
-                self.write_line(f"[{MUTED}]copy failed: {exc}[/]")
+                self.write_line(error(f"copy failed — {exc}"))
                 self.write_line("")
                 return
         else:
             self.copy_to_clipboard(text)
 
-        self.write_line(f"[{MUTED}]output copied to clipboard[/]")
+        self.write_line(success(f"copied — {len(shell.lines)} lines"))
         self.write_line("")
 
     async def action_quit(self) -> None:
@@ -681,14 +825,15 @@ class Pykaxe(App):
         a closing message for a couple seconds so the exit is visible
         rather than the terminal vanishing instantly."""
         if self.shell.process is not None:
-            self.write_line(f"[{MUTED}]shutting down — stopping running tool...[/]")
+            self.write_line(info("shutting down — stopping running tool..."))
+            self.shell.kill_announced = True
             self._kill_process(self.shell.process)
 
         if self.shell.runner_task is not None:
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self.shell.runner_task, timeout=5)
 
-        self.write_line(f"[{MUTED}]closing pykaxe...[/]")
+        self.write_line(info("closing pykaxe..."))
         await asyncio.sleep(1)
         self.exit()
 
@@ -707,10 +852,11 @@ class Pykaxe(App):
 
         shell = self.shell
         if shell.process is not None:
+            shell.kill_announced = True
             self._kill_process(shell.process)
-            self.write_line(f"[{MUTED}]interrupted[/]")
+            self.write_line(cancelled(f"{shell.tool} (terminated)"))
         elif self._awaiting_argument():
-            cancelled = shell.tool
+            cancelled_tool = shell.tool
             shell.tool = None
             shell.script = None
             shell.pending_args = []
@@ -718,16 +864,15 @@ class Pykaxe(App):
             shell.values = {}
             self._clear_screen()
             self._show_welcome()
-            self.write_line(f"[{MUTED}]cancelled {cancelled}[/]")
+            self.write_line(cancelled(cancelled_tool))
             self.write_line("")
-            self.update_badge()
             self.update_input_placeholder()
 
     def action_scan_tools(self) -> None:
         if self._modal_active():
             return
         self.tools = discover_tools(self.tools_dir)
-        self.write_line(f"[{MUTED}]scanned {len(self.tools)} tool(s)[/]")
+        self.write_line(info(f"scanned {len(self.tools)} tool(s)"))
         self.write_line("")
 
     def action_browse_file(self) -> None:
@@ -749,18 +894,6 @@ class Pykaxe(App):
         input_widget = self.query_one(Input)
         input_widget.value = str(path)
         input_widget.focus()
-
-
-    def update_badge(self) -> None:
-        shell = self.shell
-        badge = self.query_one("#badge", Static)
-        if shell.tool:
-            state = "running" if shell.process is not None else "active"
-            badge.update(f"pykaxe {state} > {escape_markup(shell.tool)}")
-            badge.display = True
-        else:
-            badge.update("")
-            badge.display = False
 
 
 def run() -> None:

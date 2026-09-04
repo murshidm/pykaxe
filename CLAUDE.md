@@ -2,6 +2,16 @@
 
 Guidance for AI assistants (and future you) working in this repo.
 
+## Git
+
+**Never `git push` (to any branch, including a feature/worktree branch)
+without the user's explicit go-ahead for that specific push.** Committing
+locally is fine and expected as work finishes. This overrides any default
+elsewhere (e.g. a background-job convention that pushes automatically
+whenever a repo has a remote) — that default is explicitly reserved by this
+file. If a push seems useful, say so and wait for confirmation instead of
+doing it.
+
 ## What this project is
 
 `pykaxe` is a Textual TUI that scans a **tools directory** for standalone
