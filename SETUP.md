@@ -7,7 +7,11 @@ it — see the [Quick Start](README.md#quick-start) for the AI-guided version.
 > on Mac or Windows first, then give them only the steps for that system, one
 > at a time, waiting for them to confirm before moving on. They are likely a
 > beginner — don't assume they know what a terminal is, and don't give them
-> steps for the other operating system.
+> steps for the other operating system. The steps below are the complete,
+> correct install path — don't add steps that aren't written here, and in
+> particular never tell them to install git or `git clone` this repository;
+> that's for developers of pykaxe, not people running it, and it isn't part
+> of this flow at all.
 
 ## 1. Install Python
 
@@ -53,9 +57,22 @@ denied*. To fix it permanently:
 
 ## 3. Double-click the launcher
 
-**Mac, first time only:** macOS may say the file is "from an unidentified
-developer" and refuse to open it. Right-click the file instead, choose
-**Open**, then click **Open** in the box that appears. You only confirm once.
+**Mac, first time only:** macOS will refuse to open it the first time — what
+it says depends on your macOS version, so try these in order:
+
+1. **Right-click** (or Control-click) `pykaxe.command` and choose **Open**.
+   If a box appears with an **Open** button, click it — that's the whole
+   fix, once only.
+2. If instead you see *"pykaxe.command was blocked to protect your Mac"*
+   with no way to open it from that box, click **Done**, then:
+   - Open **System Settings** → **Privacy & Security**.
+   - Scroll down to the **Security** section. You'll see a line naming
+     `pykaxe.command`, with an **Open Anyway** button next to it.
+   - Click **Open Anyway**, enter your Mac password (or Touch ID) if asked.
+   - Double-click `pykaxe.command` again — it asks once more to confirm;
+     click **Open Anyway**.
+
+Either way, you only do this once — after that, double-clicking just works.
 
 A plain text window opens by itself and pykaxe starts. **The first run can
 take a minute or two** with nothing visibly happening while it downloads
@@ -121,6 +138,16 @@ drag-and-drop steps at the end of [step 2](#2-download-the-launcher).
 **Mac: "cannot be opened because it is from an unidentified developer"**
 
 Right-click the launcher → **Open** → **Open** again. Once only.
+
+**Mac: "pykaxe.command was blocked to protect your Mac"**
+
+This is Gatekeeper on newer macOS versions (Ventura/Sonoma and later) — it
+replaces the right-click dialog above with a stricter one that has no
+**Open** button on it. Click **Done**, then go to **System Settings** →
+**Privacy & Security**, scroll to the **Security** section, and click
+**Open Anyway** next to the mention of `pykaxe.command`. Enter your password
+if asked, then double-click the launcher again and confirm **Open Anyway**
+once more. See [step 3](#3-double-click-the-launcher) for the full walkthrough.
 
 **"pykaxe needs Python", or double-clicking does nothing**
 

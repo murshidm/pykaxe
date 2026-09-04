@@ -78,6 +78,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the running/idle state lives only in the Input's placeholder text. A
   `Digits`-based tool-count stat bar, shown while idle, was also tried and
   removed as unnecessary.
+- `SETUP.md` now covers the newer macOS Gatekeeper dialog ("pykaxe.command
+  was blocked to protect your Mac") that replaces the old right-click →
+  Open flow on Ventura/Sonoma and later, with the System Settings → Privacy
+  & Security → Open Anyway steps needed to fix it.
+- `README.md` is now end-user-only: the "Contributing" and "Building &
+  releasing" sections moved to a new `CONTRIBUTING.md`. The Quick Start
+  prompt in `README.md`/`SETUP.md` now explicitly tells the chatbot the
+  install path is the launcher (or `pipx run pykaxe`) and not to suggest
+  `git clone`, after a real chatbot session invented a git-clone step that
+  isn't in `SETUP.md`.
 - The welcome screen now shows the running version next to the `pykaxe`
   banner (e.g. `pykaxe v0.1.7`), so it's visible at a glance which release
   you're on.

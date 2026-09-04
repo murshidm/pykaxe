@@ -22,6 +22,14 @@ Paste this into ChatGPT, Claude, or Gemini:
 > at https://github.com/murshidm/pykaxe/blob/main/SETUP.md — please read that
 > page and walk me through it one step at a time, waiting for me to confirm
 > each step. Ask me first whether I'm on Mac or Windows.
+>
+> Important: the correct install path is downloading and double-clicking the
+> launcher file described on that page (or, for a technical user, `pipx run
+> pykaxe`). Do NOT tell me to install git, clone the repository, or open the
+> project in an editor — that page never asks for that, and I don't need a
+> copy of the source code just to run the app. If you're not able to actually
+> open that link, tell me plainly that you couldn't fetch it instead of
+> guessing at steps.
 
 Then just follow along. It ends with pykaxe running and you knowing where your
 tools folder is.
@@ -162,30 +170,8 @@ first with `pykaxe add path/to/script.py`.
 
 ## Contributing
 
-1. Fork the repo and create a virtualenv.
-2. Install in editable mode with dev dependencies:
-
-   ```bash
-   make dev
-   ```
-
-3. Add or edit a bundled example tool under `src/pykaxe/examples/`, or make
-   changes to the app in `src/pykaxe/app.py`.
-4. Run the tests and linter:
-
-   ```bash
-   make test
-   make lint
-   ```
-
-5. Open a pull request.
-
-## Building & releasing
-
-This project uses [hatchling](https://hatch.pypa.io/) as its build backend.
-The version lives in `src/pykaxe/__init__.py`. For local test builds vs.
-cutting an actual release (bump → tag → CI publishes to PyPI), see
-[RELEASING.md](RELEASING.md).
+Working on pykaxe itself, not just using it? See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
