@@ -3,15 +3,22 @@
 Detailed setup, for when you'd rather read it yourself than be walked through
 it — see the [Quick Start](README.md#quick-start) for the AI-guided version.
 
-> **If you are an AI assistant helping someone with this:** ask whether they're
-> on Mac or Windows first, then give them only the steps for that system, one
-> at a time, waiting for them to confirm before moving on. They are likely a
-> beginner — don't assume they know what a terminal is, and don't give them
-> steps for the other operating system. The steps below are the complete,
-> correct install path — don't add steps that aren't written here, and in
-> particular never tell them to install git or `git clone` this repository;
-> that's for developers of pykaxe, not people running it, and it isn't part
-> of this flow at all.
+> **If you are an AI assistant helping someone with this: you are guiding a
+> novice, not handing them a manual.** Never dump the whole setup on them at
+> once. Ask whether they're on Mac or Windows first, then give them only the
+> steps for that system — one action at a time — and wait for them to confirm
+> it worked before deciding what comes next. They are likely a beginner —
+> don't assume they know what a terminal is. The steps below are the
+> complete, correct install path; don't add steps that aren't written here,
+> and in particular never tell them to install git or `git clone` this
+> repository — that's for developers of pykaxe, not people running it, and
+> it isn't part of this flow at all.
+>
+> Where a step lists more than one option, the first is the primary path —
+> give only that one first. Only move to a secondary or recovery option if
+> the primary one fails, or if what the user describes seeing doesn't match
+> what the primary path expects — ask them what they see rather than
+> listing every possibility up front.
 
 ## 1. Install Python
 
@@ -50,15 +57,16 @@ downloaded from the web, so double-clicking would just say *permission
 denied*. To fix it permanently:
 
 1. Press `Cmd + Space`, type `Terminal`, press Enter.
-2. Type `chmod +x ` — including the trailing space — but **don't press Enter**.
-3. Drag `pykaxe.command` from the Desktop into that window. It fills in the
-   file's location for you.
-4. Press Enter. No output means it worked. Close the window.
+2. Type `chmod +x ~/Desktop/pykaxe.command` and press Enter.
+3. No output means it worked. Close the window.
 
 ## 3. Double-click the launcher
 
-**Mac, first time only:** macOS will refuse to open it the first time — what
-it says depends on your macOS version, so try these in order:
+**Mac, first time only:** macOS will refuse to open it the first time. This is
+just macOS being cautious about anything downloaded from the internet — it
+doesn't mean anything is wrong. What it says depends on your macOS version, so
+try this first, and only move to the second option if it doesn't match what
+you see:
 
 1. **Right-click** (or Control-click) `pykaxe.command` and choose **Open**.
    If a box appears with an **Open** button, click it — that's the whole
@@ -95,7 +103,9 @@ a Mac.
 
 ## 4. Find your tools folder
 
-This is the one and only place your tools live:
+Your pykaxe scripts all live in one folder. pykaxe created it automatically
+the first time it ran — there was no choice to make, and this is simply where
+to find it:
 
 - **Mac:** open Finder, press `Cmd + Shift + G`, paste
   `~/Documents/pykaxe/scripts`, press Enter. Drag the folder into Finder's
@@ -104,15 +114,18 @@ This is the one and only place your tools live:
   `%USERPROFILE%\Documents\pykaxe\scripts`, press Enter. Right-click the
   folder and choose **Pin to Quick access**.
 
-To confirm from a terminal instead, run `pykaxe tools-dir` — it prints the
-exact path. To use a different folder, set the `PYKAXE_TOOLS_DIR` environment
-variable before launching pykaxe (see `README.md#usage`); the choice made on
-first run is otherwise remembered in `~/Documents/pykaxe/config.json`.
+> **Advanced/optional:** to confirm the path from a terminal instead, run
+> `pykaxe tools-dir`. To use a different folder, set the `PYKAXE_TOOLS_DIR`
+> environment variable before launching pykaxe (see
+> [README.md#usage](README.md#usage)) — the folder pykaxe picked on first run
+> is otherwise remembered in `~/Documents/pykaxe/config.json`.
 
 ## Saving a tool into that folder
 
-When an AI gives you code, it has to be saved as a plain text file ending in
-`.py`. Both built-in text editors need one setting changed first:
+A `.py` file is just a plain-text file with the code in it — you don't need
+to know anything about Python to save one. When an AI gives you code, it has
+to be saved that way, ending in `.py`. Both built-in text editors need one
+setting changed first:
 
 - **Mac (TextEdit):** choose **Format → Make Plain Text** *before* pasting —
   otherwise it saves a formatted document pykaxe can't read. Then **File →
@@ -126,14 +139,18 @@ When an AI gives you code, it has to be saved as a plain text file ending in
 
 ## If something didn't work
 
+> **If you're an AI assistant:** ask what the user is seeing rather than
+> listing fixes at them. Match it to one entry below, give that single fix,
+> and wait to hear whether it worked before trying anything else.
+
 A few fixes need the terminal. To open it: **Mac** — `Cmd + Space`, type
 `Terminal`, Enter. **Windows** — **Start**, type `Command Prompt`, click it.
 Type the command, press Enter.
 
 **Mac: "permission denied" when double-clicking the launcher**
 
-The download stripped the file's permission to run — do the four
-drag-and-drop steps at the end of [step 2](#2-download-the-launcher).
+The download stripped the file's permission to run — do the `chmod` steps at
+the end of [step 2](#2-download-the-launcher).
 
 **Mac: "cannot be opened because it is from an unidentified developer"**
 

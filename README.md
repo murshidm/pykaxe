@@ -6,10 +6,11 @@
 
 **Ask an AI for a tool. Get a TUI that runs it.**
 
-`pykaxe` scans a tools directory you choose for standalone Python scripts,
-lets you search for them and launch them from a single prompt, and streams
-their output live — with sandboxing (memory/CPU/runtime limits, output caps)
-so a runaway tool can't take the terminal down with it.
+These days it's easy to ask an AI to generate a Python script for almost
+anything — but they end up scattered everywhere, and running one still means
+wrestling with terminal commands. `pykaxe` brings them all together in one
+place: pick one from a simple menu, fill in what it asks for, and watch it
+run. No terminal commands to remember, even if you've never used one before.
 
 [![CI](https://github.com/murshidm/pykaxe/actions/workflows/ci.yml/badge.svg)](https://github.com/murshidm/pykaxe/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/pykaxe?color=3B6EA5)](https://pypi.org/project/pykaxe/)
@@ -24,24 +25,19 @@ English and drop what it gives you into a folder.
 
 ## Quick Start
 
-Three things. An AI does the rest, including the setup.
+Three things. Your AI walks you through the setup one step at a time — you're
+still the one clicking, it just tells you what to click next.
 
 ### 1. Get it running
 
 Paste this into ChatGPT, Claude, or Gemini:
 
-> I want to install and run pykaxe on my computer. The setup instructions are
-> at https://github.com/murshidm/pykaxe/blob/main/SETUP.md — please read that
-> page and walk me through it one step at a time, waiting for me to confirm
-> each step. Ask me first whether I'm on Mac or Windows.
->
-> Important: the correct install path is downloading and double-clicking the
-> launcher file described on that page (or, for a technical user, `pipx run
-> pykaxe`). Do NOT tell me to install git, clone the repository, or open the
-> project in an editor — that page never asks for that, and I don't need a
-> copy of the source code just to run the app. If you're not able to actually
-> open that link, tell me plainly that you couldn't fetch it instead of
-> guessing at steps.
+> I want to install and run pykaxe on my computer. Read
+> https://github.com/murshidm/pykaxe/blob/main/SETUP.md and follow its
+> instructions for guiding me: ask first whether I'm on Mac or Windows, then
+> give me one step at a time, waiting for me to confirm each one worked
+> before moving to the next. If you can't open that link, tell me plainly
+> instead of guessing at steps.
 
 Then just follow along. It ends with pykaxe running and you knowing where your
 tools folder is.
@@ -72,15 +68,17 @@ There's a knack to this in Notepad and TextEdit —
 [the details are here](SETUP.md#saving-a-tool-into-that-folder), or just ask
 the same chatbot to talk you through saving it.
 
-Then open pykaxe, type `/`, pick your tool, and press Enter.
+Then open pykaxe (or, if it's already open, press `Ctrl+S` so it notices the
+new file), type `/`, pick your tool, and press Enter.
 
 That's the loop — repeat 2 and 3 for every tool you want.
 
 ## Teach your AI once
 
-Step 2 has you paste the prompt at the start of each new chat. Most chat apps
-can remember it permanently instead, so "write me a pykaxe tool that…" just
-works in any conversation:
+Optional — skip this if pasting the prompt each time (step 2) is working fine
+for you. Most chat apps can remember it permanently instead, so "write me a
+pykaxe tool that…" just works in any conversation without pasting anything
+first:
 
 - **ChatGPT** — build a [Custom GPT](https://chatgpt.com/gpts/editor) with the
   prompt as its instructions, or paste it into Settings → Personalization →
